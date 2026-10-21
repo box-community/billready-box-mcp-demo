@@ -52,11 +52,11 @@ Close with the business outcome: evidence and prepared work are ready for the ow
 
 ## Live rehearsal checklist
 
-- Verify the selected demo user and root, actual tools/list, pagination, Box AI scopes, and binary URL tool access.
+- Verify the selected authorized user and root, actual tools/list, pagination, Box AI scopes, and binary URL tool access.
 - Run initial → upload → review/edit → approve → reload → source and saved Box links.
 - Confirm returned acceptance file ID belongs to mapped CW-101 `03 Acceptance`.
 - Confirm four saved outputs are in CW-101 `04 Billing` and the email lists correct IDs.
 - Test wrong-project acceptance with no financial change.
-- Add a descriptively named acceptance directly to a demo project in Box; Refresh evidence must discover/reassess it.
+- Add a descriptively named acceptance directly to a sample project in Box; Refresh evidence must discover/reassess it.
 - Verify Northstar misplaced evidence and reconcile all totals.
 - Preview reset and restore the initial state before the stage run.

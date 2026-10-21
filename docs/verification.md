@@ -14,7 +14,7 @@ BillReady was verified on October 21, 2026 with Node.js 26 and Chrome. These res
 
 These checks used real Box OAuth, Box hosted remote MCP, and Box AI, rather than the development adapter:
 
-1. Authorized the demo user, retrieved 50 actual remote tool schemas, and mapped the scoped five-project tree containing 27 original seed files.
+1. Authorized the authorized user, retrieved 50 actual remote tool schemas, and mapped the scoped five-project tree containing 27 original seed files.
 2. Used Box AI Q&A for conversation and freeform extraction for acceptance evidence. Wrong-project acceptance stayed blocked; valid hero acceptance moved $18,000 into ready billing.
 3. Prepared and approved an editable follow-up in its mapped Follow-ups folder.
 4. Reviewed and saved four actual Billing outputs: draft invoice PDF, assembled packet PDF, email JSON, and email text.
@@ -28,7 +28,7 @@ No check issued an invoice, recorded a payment, sent an email, or created an ext
 
 ## Limits
 
-The optional OpenAI provider has not been live-tested. It is unnecessary for the default Box AI agent. OAuth refresh is implemented and serialized, but a deliberately expired-session refresh was not forced during the rehearsal. External sync is explicit refresh, with no webhook. This application is intended for a single demo owner on loopback; multi-user deployment and accounting integrations are outside its scope.
+The optional OpenAI provider has not been live-tested. It is unnecessary for the default Box AI agent. OAuth refresh is implemented and serialized, but a deliberately expired-session refresh was not forced during the rehearsal. External sync is explicit refresh, with no webhook. This application is intended for a single application owner on loopback; multi-user deployment and accounting integrations are outside its scope.
 
 ## Rendered application
 

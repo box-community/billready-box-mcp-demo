@@ -18,12 +18,12 @@ npm run build
 npm start
 ```
 
-The server binds to loopback. This conference app has one demo owner and no multi-user login or accounting integration. Keep it local. Do not deploy it publicly without adding application authentication and durable secret management.
+The server binds to loopback. This local app has one application owner and no multi-user login or accounting integration. Keep it local. Do not deploy it publicly without adding application authentication and durable secret management.
 
 ## Prepare the source tree in Box
 
 1. Extract `BillReady-Box-upload.zip`.
-2. Upload the extracted **BillReady Demo** folder to the configured demo user's Box account as a folder tree. Preserve folder names and stable project identifiers.
+2. Upload the extracted **BillReady Demo** folder to the configured authorized user's Box account as a folder tree. Preserve folder names and stable project identifiers.
 3. Use an internal demo folder with no external collaborators or public shared link.
 4. Copy the **BillReady Demo root folder ID** from the Box folder URL. Set `BOX_DEMO_ROOT_ID` to that one ID. Do not use the account root (`0`).
 5. Do **not** upload `presenter-only`, `configuration`, or the complete `demo-kit` directory. The hero acceptance belongs only in `presenter-only` until the live app upload.
@@ -32,14 +32,14 @@ The application recursively lists only the selected root, handles folder paginat
 
 ## Configure remote Box MCP with OAuth
 
-This application uses **Box's hosted remote MCP**, not the Box Community MCP server. The official MCP TypeScript SDK is the *client* transport used by the backend.
+This application uses **Box's hosted remote MCP**, not the Box Community MCP server. The official MCP TypeScript SDK is the _client_ transport used by the backend.
 
-Recommended identity: the demo user who owns or can edit the uploaded tree.
+Recommended identity: the authorized user who owns or can edit the uploaded tree.
 
 1. In **Box Admin Console → Integrations**, enable the Box MCP server.
 2. Open **Box MCP server → Configure → Additional Configuration → Add Integration Credentials**. Create credentials for BillReady and retain the client ID and client secret.
 3. Register this exact redirect URI: **http://127.0.0.1:4310/auth/box/callback**.
-4. Grant the required read/write content and Box AI scopes (`root_readwrite`, `ai.readwrite`) and tool access. Doc Gen is not used and does not need a scope for this demo.
+4. Grant the required read/write content and Box AI scopes (`root_readwrite`, `ai.readwrite`) and tool access. Doc Gen is not used and does not need a scope for this application.
 5. Ensure these remote tools are available: `list_folder_content_by_folder_id`, `get_folder_details`, `get_file_content`, `ai_qa_multi_file`, `ai_extract_freeform`, `upload_file`, `get_upload_url`, `get_download_url`, `create_folder`, and `move_file`. The last two may need explicit admin enablement.
 6. Copy `.env.example` to `.env` locally and fill in the credentials. Do not add them to the kit or chat.
 
@@ -59,13 +59,14 @@ AGENT_PROVIDER=box
 # OPENAI_MODEL=a_responses_function_calling_model_enabled_for_your_account
 ```
 
-Restart the server and open **http://127.0.0.1:4310/auth/box/start**, or use **Presenter controls → Connect Box with OAuth**. Complete Box's authorization flow as the demo user. The backend exchanges the one-time code and stores tokens in ignored `data/box-oauth.json` with file permissions `0600`. Tokens and the client secret never enter browser application state. Refresh tokens are rotated server-side; concurrent refreshes are serialized. The OAuth flow checks a one-time expiring state tied to an HttpOnly SameSite cookie. For a different local port, update both `BOX_REDIRECT_URI` and the registered Box callback.
+Restart the server and open **http://127.0.0.1:4310/auth/box/start**, or use **Presenter controls → Connect Box with OAuth**. Complete Box's authorization flow as the authorized user. The backend exchanges the one-time code and stores tokens in ignored `data/box-oauth.json` with file permissions `0600`. Tokens and the client secret never enter browser application state. Refresh tokens are rotated server-side; concurrent refreshes are serialized. The OAuth flow checks a one-time expiring state tied to an HttpOnly SameSite cookie. For a different local port, update both `BOX_REDIRECT_URI` and the registered Box callback.
 
 If you already have a suitable authorized bearer token, `BOX_MCP_TOKEN` is an optional environment override. It takes priority over the OAuth cache and has no automatic refresh. Remove that override when using the OAuth flow.
 
-Use OAuth for this signed-in-user demo. A CCG/service-account app is not required by this implementation.
+Use OAuth for this signed-in-user application. A CCG/service-account app is not required by this implementation.
 
 Official references:
+
 - [Box remote MCP setup](https://developer.box.com/guides/box-mcp/setup)
 - [Box available tools and binary transfers](https://docs.box.com/en/box-mcp/tools)
 - [Box OAuth authorization-code flow](https://developer.box.com/guides/authentication/oauth2/without-sdk)
@@ -82,10 +83,10 @@ This connects to remote Box MCP and writes the actual `tools/list` schemas to `v
 The shipped mappings support documented tool names and common schema names. If the tenant exposes a different argument name, set `BOX_MCP_SCHEMA_MAP` to a local JSON file mapping semantic names to actual names, for example:
 
 ```json
-{"get_upload_url":{"folder_id":"parent_folder_id","file_name":"name"}}
+{ "get_upload_url": { "folder_id": "parent_folder_id", "file_name": "name" } }
 ```
 
-This is a schema compatibility override, not permission to change the demo root. If the server has a different response/transfer contract, inspect the saved schemas and update the adapter before calling the live setup complete.
+This is a schema compatibility override, not permission to change the configured root. If the server has a different response/transfer contract, inspect the saved schemas and update the adapter before calling the live setup complete.
 
 ## First live refresh and checks
 
@@ -109,10 +110,10 @@ The structured seed and invoice register in the kit mirror `server/domain.ts`. A
 
 ## External-document refresh
 
-There are no webhooks. The root-level `BillReady Rehearsal Archive` is excluded from active ingestion and analysis so archived acceptance does not spoil a reset. **Refresh evidence** recursively inventories the configured demo tree and reanalyzes acceptance candidates whose names include `accept` or `handover`. Use descriptive names, for example `CW-101-signed-acceptance.pdf`. It checks the document content, not just the filename or folder. Discovery also searches general project records, so misplaced Northstar acceptance is supported without moving it.
+There are no webhooks. The root-level `BillReady Rehearsal Archive` is excluded from active ingestion and analysis so archived acceptance does not spoil a reset. **Refresh evidence** recursively inventories the configured configured tree and reanalyzes acceptance candidates whose names include `accept` or `handover`. Use descriptive names, for example `CW-101-signed-acceptance.pdf`. It checks the document content, not just the filename or folder. Discovery also searches general project records, so misplaced Northstar acceptance is supported without moving it.
 
 Development equivalent: copy a PDF into `data/development/external-inbox/CW-101/` (or the corresponding project ID), then click Refresh evidence. This uses the same validation as app upload. It does not read `presenter-only` automatically.
 
 ## Verification limits at delivery
 
-The implementation was verified with an authorized demo user and a dedicated Box root. Actual remote tool schemas and the tree were retrieved, and Box AI Q&A/extraction succeeded. See [the verification record](../docs/verification.md) for the live workflow results. Each installation needs its own credentials and root ID. The optional OpenAI provider is untested because no OpenAI key was supplied; the default Box AI provider does not need one.
+The implementation was verified with an authorized authorized user and a dedicated Box root. Actual remote tool schemas and the tree were retrieved, and Box AI Q&A/extraction succeeded. See [the verification record](../docs/verification.md) for the live workflow results. Each installation needs its own credentials and root ID. The optional OpenAI provider is untested because no OpenAI key was supplied; the default Box AI provider does not need one.

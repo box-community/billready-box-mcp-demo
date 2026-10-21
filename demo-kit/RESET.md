@@ -1,6 +1,6 @@
 # Reset BillReady safely
 
-The reset utility is scoped to this application's local demo state and recorded demo-owned outputs. It never deletes a Box root, original seed source, or arbitrary folder. Its default is a preview. Stop the running app before applying reset, then restart it afterward.
+The reset utility is scoped to this application's local application state and recorded application-owned outputs. It never deletes a Box root, original seed source, or arbitrary folder. Its default is a preview. Stop the running app before applying reset, then restart it afterward.
 
 ## Development adapter
 
@@ -22,7 +22,7 @@ Keep the same `BILLREADY_ADAPTER=live` and `BOX_DEMO_ROOT_ID` as the rehearsal. 
 npm run reset
 ```
 
-The preview lists **only recorded demo-owned file IDs**: app-uploaded acceptances (including rejected uploads), generated invoice/packet/email files, and approved follow-up JSON. After reviewing the preview, stop the app and apply:
+The preview lists **only recorded application-owned file IDs**: app-uploaded acceptances (including rejected uploads), generated invoice/packet/email files, and approved follow-up JSON. After reviewing the preview, stop the app and apply:
 
 ```sh
 npm run reset -- --apply
@@ -33,7 +33,7 @@ Apply uses remote MCP `create_folder` and `move_file` to archive just those reco
 
 The app excludes this dedicated archive from active discovery and Box AI evidence. The reset then verifies recorded active artifacts are gone, clears workflow/conversation/approval state, and restores initial readiness. OAuth tokens survive. Return to Overview without workspace-wide Refresh to keep Northstar's opening discovery state.
 
-A directly added external file is not automatically owned by the app. For an external-refresh rehearsal, use an app-uploaded acceptance and move it through Box before refreshing, or move the specific externally added test file into the rehearsal archive yourself. Do not move original seed acceptances. Never archive documents outside the demo root.
+A directly added external file is not automatically owned by the app. For an external-refresh rehearsal, use an app-uploaded acceptance and move it through Box before refreshing, or move the specific externally added test file into the rehearsal archive yourself. Do not move original seed acceptances. Never archive documents outside the configured root.
 
 Archive links are recoverable: use the receipt's archiveFolderId and originalFolderId to review or restore an individual rehearsal file. Keep archived acceptances out of active project folders before the next run.
 
@@ -41,7 +41,7 @@ If the root or identity changed, use a new isolated `DATA_DIR` and upload a clea
 
 ## Repeatable verification
 
-`npm run test:e2e` creates and clears only its own isolated `data/e2e` store and rehearses the UI. The ordinary demo store is separate. After the browser test, preview and apply reset to the test store if inspecting it manually:
+`npm run test:e2e` creates and clears only its own isolated `data/e2e` store and rehearses the UI. The ordinary application store is separate. After the browser test, preview and apply reset to the test store if inspecting it manually:
 
 ```sh
 DATA_DIR=./data/e2e npm run reset
