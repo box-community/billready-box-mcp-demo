@@ -1,0 +1,45 @@
+{
+  "id": "CW-105",
+  "client": "Northstar Health",
+  "name": "Northstar · Training Center",
+  "shortName": "Northstar Health",
+  "contact": "Casey Brooks",
+  "email": "casey.brooks@northstar.example",
+  "owner": "Alex Chen",
+  "color": "#87739b",
+  "progress": 100,
+  "milestones": [
+    {
+      "id": "M1",
+      "name": "Design & procurement",
+      "cents": 1600000,
+      "complete": true,
+      "issued": true,
+      "paidCents": 1600000,
+      "acceptanceRequired": false,
+      "accepted": false,
+      "issuedDate": "2026-10-12"
+    },
+    {
+      "id": "M2",
+      "name": "Installation",
+      "cents": 2400000,
+      "complete": true,
+      "issued": true,
+      "paidCents": 2400000,
+      "acceptanceRequired": false,
+      "accepted": false,
+      "issuedDate": "2026-10-12"
+    },
+    {
+      "id": "M3",
+      "name": "Final acceptance & training",
+      "cents": 1600000,
+      "complete": true,
+      "issued": false,
+      "paidCents": 0,
+      "acceptanceRequired": true,
+      "accepted": false
+    }
+  ]
+}

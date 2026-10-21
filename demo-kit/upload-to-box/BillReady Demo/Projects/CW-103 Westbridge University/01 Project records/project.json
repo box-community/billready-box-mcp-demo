@@ -1,0 +1,46 @@
+{
+  "id": "CW-103",
+  "client": "Westbridge University",
+  "name": "Westbridge · Lecture Hall",
+  "shortName": "Westbridge University",
+  "contact": "Taylor Reed",
+  "email": "taylor.reed@westbridge.example",
+  "owner": "Alex Chen",
+  "color": "#7c82a1",
+  "progress": 100,
+  "milestones": [
+    {
+      "id": "M1",
+      "name": "System design",
+      "cents": 2400000,
+      "complete": true,
+      "issued": true,
+      "paidCents": 2400000,
+      "acceptanceRequired": false,
+      "accepted": false,
+      "issuedDate": "2026-10-12"
+    },
+    {
+      "id": "M2",
+      "name": "Equipment & installation",
+      "cents": 4800000,
+      "complete": true,
+      "issued": true,
+      "paidCents": 4800000,
+      "acceptanceRequired": false,
+      "accepted": false,
+      "issuedDate": "2026-10-12"
+    },
+    {
+      "id": "M3",
+      "name": "Testing & handover",
+      "cents": 2400000,
+      "complete": true,
+      "issued": true,
+      "paidCents": 1200000,
+      "acceptanceRequired": true,
+      "accepted": true,
+      "issuedDate": "2026-10-12"
+    }
+  ]
+}

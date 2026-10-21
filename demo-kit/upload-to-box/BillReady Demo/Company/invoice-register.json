@@ -1,0 +1,92 @@
+[
+  {
+    "reference": "INV-CW-101-M1",
+    "projectId": "CW-101",
+    "milestoneId": "M1",
+    "cents": 1800000,
+    "paidCents": 1800000,
+    "issuedDate": "2026-10-12",
+    "dueDate": "2026-11-11"
+  },
+  {
+    "reference": "INV-CW-101-M2",
+    "projectId": "CW-101",
+    "milestoneId": "M2",
+    "cents": 3600000,
+    "paidCents": 3600000,
+    "issuedDate": "2026-10-12",
+    "dueDate": "2026-11-11"
+  },
+  {
+    "reference": "INV-CW-102-M1",
+    "projectId": "CW-102",
+    "milestoneId": "M1",
+    "cents": 2000000,
+    "paidCents": 2000000,
+    "issuedDate": "2026-10-12",
+    "dueDate": "2026-11-11"
+  },
+  {
+    "reference": "INV-CW-102-M2",
+    "projectId": "CW-102",
+    "milestoneId": "M2",
+    "cents": 2000000,
+    "paidCents": 2000000,
+    "issuedDate": "2026-10-12",
+    "dueDate": "2026-11-11"
+  },
+  {
+    "reference": "INV-CW-103-M1",
+    "projectId": "CW-103",
+    "milestoneId": "M1",
+    "cents": 2400000,
+    "paidCents": 2400000,
+    "issuedDate": "2026-10-12",
+    "dueDate": "2026-11-11"
+  },
+  {
+    "reference": "INV-CW-103-M2",
+    "projectId": "CW-103",
+    "milestoneId": "M2",
+    "cents": 4800000,
+    "paidCents": 4800000,
+    "issuedDate": "2026-10-12",
+    "dueDate": "2026-11-11"
+  },
+  {
+    "reference": "INV-CW-103-M3",
+    "projectId": "CW-103",
+    "milestoneId": "M3",
+    "cents": 2400000,
+    "paidCents": 1200000,
+    "issuedDate": "2026-10-12",
+    "dueDate": "2026-11-11"
+  },
+  {
+    "reference": "INV-CW-104-M1",
+    "projectId": "CW-104",
+    "milestoneId": "M1",
+    "cents": 1200000,
+    "paidCents": 1200000,
+    "issuedDate": "2026-10-12",
+    "dueDate": "2026-11-11"
+  },
+  {
+    "reference": "INV-CW-105-M1",
+    "projectId": "CW-105",
+    "milestoneId": "M1",
+    "cents": 1600000,
+    "paidCents": 1600000,
+    "issuedDate": "2026-10-12",
+    "dueDate": "2026-11-11"
+  },
+  {
+    "reference": "INV-CW-105-M2",
+    "projectId": "CW-105",
+    "milestoneId": "M2",
+    "cents": 2400000,
+    "paidCents": 2400000,
+    "issuedDate": "2026-10-12",
+    "dueDate": "2026-11-11"
+  }
+]

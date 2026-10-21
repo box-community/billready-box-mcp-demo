@@ -1,0 +1,101 @@
+{
+  "demoDate": "2026-10-21",
+  "currency": "USD",
+  "amountsAre": "integer cents",
+  "initial": {
+    "value": 33600000,
+    "invoiced": 24200000,
+    "outstanding": 1200000,
+    "thisMonth": 24200000,
+    "future": 3600000,
+    "blocked": 3400000,
+    "ready": 2400000
+  },
+  "afterHeroUpload": {
+    "value": 33600000,
+    "invoiced": 24200000,
+    "outstanding": 1200000,
+    "thisMonth": 24200000,
+    "future": 3600000,
+    "blocked": 1600000,
+    "ready": 4200000
+  },
+  "afterDiscovery": {
+    "value": 33600000,
+    "invoiced": 24200000,
+    "outstanding": 1200000,
+    "thisMonth": 24200000,
+    "future": 3600000,
+    "blocked": 0,
+    "ready": 5800000
+  },
+  "heroFinalMilestoneCents": 1800000,
+  "preparedDoesNotChangeFinancials": true,
+  "projects": [
+    {
+      "projectId": "CW-101",
+      "client": "Alder & Finch",
+      "initial": {
+        "value": 7200000,
+        "invoiced": 5400000,
+        "outstanding": 0,
+        "thisMonth": 5400000,
+        "future": 0,
+        "blocked": 1800000,
+        "ready": 0
+      }
+    },
+    {
+      "projectId": "CW-102",
+      "client": "The Marlow Hotel",
+      "initial": {
+        "value": 6400000,
+        "invoiced": 4000000,
+        "outstanding": 0,
+        "thisMonth": 4000000,
+        "future": 0,
+        "blocked": 0,
+        "ready": 2400000
+      }
+    },
+    {
+      "projectId": "CW-103",
+      "client": "Westbridge University",
+      "initial": {
+        "value": 9600000,
+        "invoiced": 9600000,
+        "outstanding": 1200000,
+        "thisMonth": 9600000,
+        "future": 0,
+        "blocked": 0,
+        "ready": 0
+      }
+    },
+    {
+      "projectId": "CW-104",
+      "client": "Fieldstone Studio",
+      "initial": {
+        "value": 4800000,
+        "invoiced": 1200000,
+        "outstanding": 0,
+        "thisMonth": 1200000,
+        "future": 3600000,
+        "blocked": 0,
+        "ready": 0
+      }
+    },
+    {
+      "projectId": "CW-105",
+      "client": "Northstar Health",
+      "initial": {
+        "value": 5600000,
+        "invoiced": 4000000,
+        "outstanding": 0,
+        "thisMonth": 4000000,
+        "future": 0,
+        "blocked": 1600000,
+        "ready": 0
+      }
+    }
+  ]
+}

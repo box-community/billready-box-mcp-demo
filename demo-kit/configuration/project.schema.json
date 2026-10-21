@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "id",
+    "client",
+    "milestones"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^CW-10[1-5]$"
+    },
+    "client": {
+      "type": "string"
+    },
+    "milestones": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "cents",
+          "complete",
+          "issued",
+          "acceptanceRequired",
+          "accepted",
+          "paidCents"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^M[1-4]$"
+          },
+          "cents": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "paidCents": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "issued": {
+            "type": "boolean"
+          },
+          "acceptanceRequired": {
+            "type": "boolean"
+          },
+          "accepted": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

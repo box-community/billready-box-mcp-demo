@@ -1,0 +1,45 @@
+{
+  "id": "CW-101",
+  "client": "Alder & Finch",
+  "name": "Alder & Finch · Office AV",
+  "shortName": "Alder & Finch",
+  "contact": "Morgan Ellis",
+  "email": "morgan.ellis@alderfinch.example",
+  "owner": "Alex Chen",
+  "color": "#bd7955",
+  "progress": 100,
+  "milestones": [
+    {
+      "id": "M1",
+      "name": "Design & procurement",
+      "cents": 1800000,
+      "complete": true,
+      "issued": true,
+      "paidCents": 1800000,
+      "acceptanceRequired": false,
+      "accepted": false,
+      "issuedDate": "2026-10-12"
+    },
+    {
+      "id": "M2",
+      "name": "Installation & commissioning",
+      "cents": 3600000,
+      "complete": true,
+      "issued": true,
+      "paidCents": 3600000,
+      "acceptanceRequired": false,
+      "accepted": false,
+      "issuedDate": "2026-10-12"
+    },
+    {
+      "id": "M3",
+      "name": "Final acceptance & handover",
+      "cents": 1800000,
+      "complete": true,
+      "issued": false,
+      "paidCents": 0,
+      "acceptanceRequired": true,
+      "accepted": false
+    }
+  ]
+}

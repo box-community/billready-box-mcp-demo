@@ -1,0 +1,45 @@
+{
+  "id": "CW-102",
+  "client": "The Marlow Hotel",
+  "name": "Marlow · Conference Rooms",
+  "shortName": "Marlow Hotel",
+  "contact": "Jamie Park",
+  "email": "jamie.park@marlow.example",
+  "owner": "Sam Rivera",
+  "color": "#638887",
+  "progress": 100,
+  "milestones": [
+    {
+      "id": "M1",
+      "name": "Design & equipment",
+      "cents": 2000000,
+      "complete": true,
+      "issued": true,
+      "paidCents": 2000000,
+      "acceptanceRequired": false,
+      "accepted": false,
+      "issuedDate": "2026-10-12"
+    },
+    {
+      "id": "M2",
+      "name": "Room installation",
+      "cents": 2000000,
+      "complete": true,
+      "issued": true,
+      "paidCents": 2000000,
+      "acceptanceRequired": false,
+      "accepted": false,
+      "issuedDate": "2026-10-12"
+    },
+    {
+      "id": "M3",
+      "name": "Training & handover",
+      "cents": 2400000,
+      "complete": true,
+      "issued": false,
+      "paidCents": 0,
+      "acceptanceRequired": true,
+      "accepted": true
+    }
+  ]
+}

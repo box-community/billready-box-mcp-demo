@@ -1,0 +1,44 @@
+{
+  "id": "CW-104",
+  "client": "Fieldstone Studio",
+  "name": "Fieldstone · Collaboration Suite",
+  "shortName": "Fieldstone Studio",
+  "contact": "Jordan Lane",
+  "email": "jordan.lane@fieldstone.example",
+  "owner": "Sam Rivera",
+  "color": "#969368",
+  "progress": 40,
+  "milestones": [
+    {
+      "id": "M1",
+      "name": "Design approval",
+      "cents": 1200000,
+      "complete": true,
+      "issued": true,
+      "paidCents": 1200000,
+      "acceptanceRequired": false,
+      "accepted": false,
+      "issuedDate": "2026-10-12"
+    },
+    {
+      "id": "M2",
+      "name": "Equipment & installation",
+      "cents": 2400000,
+      "complete": false,
+      "issued": false,
+      "paidCents": 0,
+      "acceptanceRequired": false,
+      "accepted": false
+    },
+    {
+      "id": "M3",
+      "name": "Commissioning",
+      "cents": 1200000,
+      "complete": false,
+      "issued": false,
+      "paidCents": 0,
+      "acceptanceRequired": true,
+      "accepted": false
+    }
+  ]
+}

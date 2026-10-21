@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "demoDate": "2026-10-21",
+  "rootName": "BillReady Demo",
+  "projects": [
+    {
+      "projectId": "CW-101",
+      "folder": "Projects/CW-101 Alder & Finch",
+      "records": "01 Project records/project.json"
+    },
+    {
+      "projectId": "CW-102",
+      "folder": "Projects/CW-102 Marlow Hotel",
+      "records": "01 Project records/project.json"
+    },
+    {
+      "projectId": "CW-103",
+      "folder": "Projects/CW-103 Westbridge University",
+      "records": "01 Project records/project.json"
+    },
+    {
+      "projectId": "CW-104",
+      "folder": "Projects/CW-104 Fieldstone Studio",
+      "records": "01 Project records/project.json"
+    },
+    {
+      "projectId": "CW-105",
+      "folder": "Projects/CW-105 Northstar Health",
+      "records": "01 Project records/project.json"
+    }
+  ],
+  "heroAcceptance": "presenter-only/CW-101-signed-acceptance.pdf",
+  "excludedFromIngestion": [
+    "presenter-only",
+    "configuration"
+  ]
+}
