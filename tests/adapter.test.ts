@@ -13,6 +13,7 @@ const workflow = await import("../server/workflow.ts");
 const domain = await import("../server/domain.ts");
 store.initialize(adapter.localSeedDocs());
 test("presenter acceptance excluded; wrong-project content rejected, hero verified, approval idempotent", async () => {
+  assert.ok(!store.documents().some((d) => d.name.startsWith(".")));
   assert.ok(
     !store
       .documents()

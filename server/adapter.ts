@@ -44,6 +44,7 @@ export function localSeedDocs() {
   const out: Doc[] = [];
   const walk = (dir: string) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name.startsWith(".")) continue;
       const f = path.join(dir, e.name);
       if (e.isDirectory()) walk(f);
       else {
