@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { boxMcp } from "../server/box-mcp.ts";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -78,4 +79,4 @@ for (const [k, v] of Object.entries(mappings)) put(k, v);
 console.log(
   "Restored initial demo workflow. Restart the app. Original source tree preserved.",
 );
-if (mode === "live") await remote.client?.close();
+if (mode === "live") await boxMcp.client?.close();

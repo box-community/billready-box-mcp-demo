@@ -9,9 +9,57 @@ process.env.DATA_DIR = fs.mkdtempSync(
 process.env.BILLREADY_ADAPTER = "development";
 const store = await import("../server/store.ts");
 const adapter = await import("../server/adapter.ts");
+const { BoxMcpClient } = await import("../server/box-mcp.ts");
 const workflow = await import("../server/workflow.ts");
 const domain = await import("../server/domain.ts");
 store.initialize(adapter.localSeedDocs());
+test("missing discovery stays blocked and wrong-project or unsigned evidence cannot unlock billing", async () => {
+  await workflow.discover("CW-101");
+  assert.equal(domain.billing(store.projects()[0]).blocked, 1800000);
+  const wrong = {
+    ...store
+      .documents()
+      .find((d) => d.name === "CW-102-signed-acceptance.pdf")!,
+    id: "wrong-project-fixture",
+    projectId: "CW-101",
+  };
+  await workflow.reassess("CW-101", [wrong]);
+  assert.equal(store.documents().find((d) => d.id === wrong.id)?.valid, false);
+  const { makePdf } = await import("../server/pdf.ts");
+  const unsignedPath = path.join(store.dataDir, "unsigned.pdf");
+  await makePdf(unsignedPath, "Unsigned acceptance", "Fixture", [
+    {
+      title: "Acceptance",
+      text:
+        "Project ID: CW-101\nClient: Alder & Finch\nMilestone ID: M3\nSigned: NO\nSigner: Morgan Ellis\nDate: " +
+        domain.DEMO_DATE +
+        "\nStatus: ACCEPTED\nWe accept the completed work for this milestone without reservation.",
+    },
+  ]);
+  await workflow.reassess("CW-101", [
+    {
+      id: "unsigned-fixture",
+      projectId: "CW-101",
+      name: "unsigned-acceptance.pdf",
+      category: "Acceptance",
+      path: unsignedPath,
+    },
+  ]);
+  assert.equal(
+    store.documents().find((d) => d.id === "unsigned-fixture")?.valid,
+    false,
+  );
+  assert.equal(domain.billing(store.projects()[0]).ready, 0);
+  assert.equal(domain.billing(store.projects()[0]).blocked, 1800000);
+  assert.equal(store.projects()[0].milestones[2].acceptanceFileId, undefined);
+  // Keep later workflow fixtures independent of these rejected candidates.
+  store.put(
+    "documents",
+    store
+      .documents()
+      .filter((d) => ![wrong.id, "unsigned-fixture"].includes(d.id)),
+  );
+});
 test("presenter acceptance excluded; wrong-project content rejected, hero verified, approval idempotent", async () => {
   assert.ok(!store.documents().some((d) => d.name.startsWith(".")));
   assert.ok(
@@ -102,7 +150,7 @@ test("external inbox refresh applies the same validation", async () => {
   );
 });
 test("remote MCP client uses actual tool schemas and rejects missing required arguments", async () => {
-  const r = new adapter.RemoteBox();
+  const r = new BoxMcpClient();
   let called: any;
   r.client = {
     callTool: async (args: any) => {
@@ -124,16 +172,16 @@ test("remote MCP client uses actual tool schemas and rejects missing required ar
       },
     },
   ];
-  await r.semantic("list_folder_content_by_folder_id", {
+  await r.callBoxTool("list_folder_content_by_folder_id", {
     folder_id: "123",
     limit: 100,
   });
   assert.deepEqual(called.arguments, { folder_id: "123", limit: 100 });
   await assert.rejects(
-    () => r.semantic("list_folder_content_by_folder_id", {}),
-    /Schema mismatch/,
+    () => r.callBoxTool("list_folder_content_by_folder_id", {}),
+    /Invalid arguments/,
   );
-  await assert.rejects(() => r.semantic("not_a_tool", {}), /unavailable/);
+  await assert.rejects(() => r.callBoxTool("not_a_tool", {}), /unavailable/);
 });
 test("transfer URL scope rejects non-Box destinations", () => {
   assert.ok(adapter.safeTransferUrl("https://upload.box.com/a"));
@@ -160,4 +208,22 @@ test("ready seed milestones link verified acceptance before preparing billing", 
   );
   await workflow.approve(draft.id);
   assert.equal(domain.totals(store.projects()).invoiced, before.invoiced);
+});
+
+test("technical manifests cannot become customer email attachments", () => {
+  store.resetStore();
+  store.initialize(adapter.localSeedDocs());
+  const proposal = workflow.propose(store.projects()[0], "followup");
+  const manifest = store
+    .documents()
+    .find((d) => d.projectId === "CW-101" && d.name === "project.json")!;
+  assert.ok(manifest);
+  assert.throws(
+    () =>
+      workflow.editProposal(proposal.id, {
+        ...proposal,
+        attachments: [manifest.id],
+      }),
+    /customer-facing documents/,
+  );
 });

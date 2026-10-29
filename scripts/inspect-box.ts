@@ -1,14 +1,14 @@
 import "dotenv/config";
+import { boxMcp } from "../server/box-mcp.ts";
 import fs from "node:fs";
 import path from "node:path";
-import { remote } from "../server/adapter.ts";
-await remote.connect();
+await boxMcp.connect();
 const out = path.resolve("verification/box-tool-schemas.json");
 fs.mkdirSync(path.dirname(out), { recursive: true });
 fs.writeFileSync(
   out,
   JSON.stringify(
-    remote.tools.map((t) => ({
+    boxMcp.tools.map((t) => ({
       name: t.name,
       inputSchema: t.inputSchema,
       description: t.description,
@@ -18,6 +18,6 @@ fs.writeFileSync(
   ),
 );
 console.log(
-  `Saved ${remote.tools.length} actual remote Box MCP schemas to ${out}. No credentials saved.`,
+  `Saved ${boxMcp.tools.length} actual remote Box MCP schemas to ${out}. No credentials saved.`,
 );
-await remote.client?.close();
+await boxMcp.client?.close();

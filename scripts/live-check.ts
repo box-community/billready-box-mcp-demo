@@ -1,10 +1,11 @@
 import "dotenv/config";
+import { boxMcp } from "../server/box-mcp.ts";
 import fs from "node:fs";
 import { remote } from "../server/adapter.ts";
 import { get, put } from "../server/store.ts";
 const root = process.env.BOX_DEMO_ROOT_ID;
 if (!root || root === "0") throw Error("Set the specific demo root first");
-const details: any = await remote.semantic("get_folder_details", {
+const details: any = await boxMcp.callBoxTool("get_folder_details", {
   folder_id: root,
   fields: [
     "id",
@@ -65,4 +66,4 @@ fs.writeFileSync(
     2,
   ),
 );
-await remote.client?.close();
+await boxMcp.client?.close();

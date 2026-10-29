@@ -1,3 +1,10 @@
+import { ToolActivity } from "./ToolActivity";
+import { streamRequest } from "./stream-request";
+import {
+  isCustomerDocument,
+  documentLabel,
+} from "../shared/customer-documents";
+import type { Trace } from "../server/tracing.ts";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -39,6 +46,9 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import "./style.css";
+const PdfPreview = React.lazy(() =>
+  import("./PdfPreview").then((module) => ({ default: module.PdfPreview })),
+);
 type Milestone = {
   id: string;
   name: string;
@@ -104,7 +114,7 @@ type Message = {
   text: string;
   sources: string[];
   proposalId?: string;
-  tools?: { tool: string; detail: string; mode: string }[];
+  tools?: Trace[];
 };
 type State = {
   mode: string;
@@ -156,11 +166,32 @@ function App() {
   const [preview, setPreview] = useState<{ title: string; url: string }>();
   const [reviewId, setReviewId] = useState<string>();
   const [uploadState, setUploadState] = useState("");
+  const [proofRun, setProofRun] = useState<{
+    projectId: string;
+    tools: Trace[];
+    message?: string;
+    valid?: boolean;
+    failed?: boolean;
+    reused?: boolean;
+    beforeReady?: number;
+    beforeBlocked?: number;
+  }>();
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState("milestones");
+  const [liveTools, setLiveTools] = useState<Trace[]>([]);
   const activeContext = useRef("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const proofPanel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (uploadState)
+      proofPanel.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+  }, [Boolean(uploadState)]);
   const chatEnd = useRef<HTMLDivElement>(null);
+  const followActivity = useRef(true);
+  const liveToolsRef = useRef<Trace[]>([]);
   const context = view === "projects" ? "overview" : view;
   const project = state?.projects.find((p) => p.id === view);
   activeContext.current = context;
@@ -183,6 +214,7 @@ function App() {
   useEffect(() => {
     let active = true;
     setConversation([]);
+    setLiveTools([]);
     api("/chat/" + context)
       .then((messages) => {
         if (active) setConversation(messages);
@@ -198,6 +230,10 @@ function App() {
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [conversation, busy]);
+  useEffect(() => {
+    if (busy && followActivity.current)
+      chatEnd.current?.scrollIntoView({ block: "nearest" });
+  }, [liveTools.length, busy]);
   useEffect(() => {
     if (notice) {
       const t = setTimeout(() => setNotice(undefined), 6500);
@@ -218,22 +254,43 @@ function App() {
     if (busy || !text.trim()) return;
     setAgentOpen(true);
     setBusy(true);
+    setLiveTools([]);
+    liveToolsRef.current = [];
+    followActivity.current = true;
     setQuestion("");
     setConversation((c) => [
       ...c,
       { id: crypto.randomUUID(), role: "user", text, sources: [] },
     ]);
     try {
-      const r = await api("/chat/" + context, {
-        method: "POST",
-        ...json({ text }),
-      });
-      if (activeContext.current === context) setConversation((c) => [...c, r]);
+      const reply = await streamRequest<Message>(
+        "/api/chat/" + context + "/stream",
+        { method: "POST", ...json({ text }) },
+        (payload) => {
+          if (activeContext.current !== context) return;
+          liveToolsRef.current = [
+            ...liveToolsRef.current.filter((t) => t.seq !== payload.seq),
+            payload,
+          ].sort((a, b) => a.seq - b.seq);
+          setLiveTools(liveToolsRef.current);
+        },
+      );
+      if (activeContext.current === context)
+        setConversation((c) => [...c, reply]);
       await load();
     } catch (e) {
       setNotice({ text: (e as Error).message, error: true });
       if (activeContext.current === context) {
-        setConversation((c) => c.slice(0, -1));
+        setConversation((c) => [
+          ...c,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            text: "The request did not finish. " + (e as Error).message,
+            sources: [],
+            tools: liveToolsRef.current,
+          },
+        ]);
         setQuestion(text);
       }
     } finally {
@@ -259,28 +316,62 @@ function App() {
   }
   async function upload(file: File) {
     if (!project) return;
-    setUploadState("Uploading acceptance…");
+    const pid = project.id;
+    setUploadState("Connecting to Box…");
+    setProofRun({
+      projectId: pid,
+      tools: [],
+      beforeReady: project.billing.ready,
+      beforeBlocked: project.billing.blocked,
+    });
     const form = new FormData();
     form.append("file", file);
     try {
-      const uploaded = await api(
-        "/projects/" + project.id + "/acceptance?defer=1",
+      const result = await streamRequest<{ valid: boolean; message: string }>(
+        "/api/projects/" + pid + "/acceptance/stream",
         { method: "POST", body: form },
-      );
-      setUploadState("Checking client, milestone & signature…");
-      const r = uploaded.valid
-        ? uploaded
-        : await api(
-            "/projects/" +
-              project.id +
-              "/acceptance/" +
-              uploaded.document.id +
-              "/check",
-            { method: "POST" },
+        (entry) => {
+          setProofRun((run) =>
+            run?.projectId === pid
+              ? {
+                  ...run,
+                  tools: [
+                    ...run.tools.filter((t) => t.seq !== entry.seq),
+                    entry,
+                  ].sort((a, b) => a.seq - b.seq),
+                }
+              : run,
           );
-      await load();
-      setNotice({ text: r.message, error: !r.valid });
+          if (entry.status === "running")
+            setUploadState(
+              entry.tool === "binary_upload"
+                ? "Transferring PDF to Box…"
+                : entry.tool === "ai_extract_freeform"
+                  ? "Box AI is reading the acceptance…"
+                  : entry.tool === "list_folder_content_by_folder_id"
+                    ? "Checking the file in Box…"
+                    : "Requesting Box evidence…",
+            );
+        },
+      );
+      setUploadState("Validating evidence and updating billing…");
+      const updated = await api("/state");
+      setState(updated);
+      setProofRun((run) =>
+        run
+          ? {
+              ...run,
+              message: result.message,
+              valid: result.valid,
+              reused: run.tools.length === 0 && result.valid,
+            }
+          : run,
+      );
+      setNotice({ text: result.message, error: !result.valid });
     } catch (e) {
+      setProofRun((run) =>
+        run ? { ...run, message: (e as Error).message, failed: true } : run,
+      );
       setNotice({ text: (e as Error).message, error: true });
     } finally {
       setUploadState("");
@@ -347,6 +438,12 @@ function App() {
       </div>
     );
   const t = project?.billing || state.totals;
+  const savedBilling = state.proposals.find(
+    (p) =>
+      p.projectId === project?.id &&
+      p.type === "billing" &&
+      p.status === "prepared",
+  );
   const prompts = project
     ? project.billing.blocked
       ? [
@@ -571,14 +668,18 @@ function App() {
                   {t.blocked
                     ? `${money(t.blocked)} is waiting on customer acceptance`
                     : t.ready
-                      ? `${money(t.ready)} is ready for your review`
+                      ? savedBilling
+                        ? "Your billing package is saved"
+                        : `${money(t.ready)} is ready for your review`
                       : "Delivery and billing are on track"}
                 </b>
                 <p>
                   {t.blocked
                     ? "The work is complete. Add signed acceptance to unlock the final milestone."
                     : t.ready
-                      ? "The evidence is in place. Prepare the draft invoice and billing packet."
+                      ? savedBilling
+                        ? "Open the saved package below to download your documents and prepare the client email."
+                        : "The evidence is in place. Prepare the draft invoice and billing packet."
                       : t.outstanding
                         ? `${money(t.outstanding)} remains unpaid on issued invoices.`
                         : "Follow delivery progress below."}
@@ -593,7 +694,7 @@ function App() {
                   <Upload size={15} />
                   {uploadState || "Upload acceptance"}
                 </button>
-              ) : t.ready ? (
+              ) : t.ready && !savedBilling ? (
                 <button
                   className="button dark"
                   disabled={busy}
@@ -933,6 +1034,164 @@ function App() {
             </section>
           ) : (
             <>
+              {proofRun?.projectId === project.id && (
+                <section
+                  className="card proof-progress"
+                  aria-label="Proof verification activity"
+                  ref={proofPanel}
+                >
+                  <div className="proof-heading">
+                    <div>
+                      <span className="eyebrow">
+                        EVIDENCE → BILLING READINESS
+                      </span>
+                      <h2>
+                        {uploadState
+                          ? "Verifying customer proof"
+                          : proofRun.valid
+                            ? "Acceptance verified · billing updated"
+                            : proofRun.failed
+                              ? "Verification interrupted"
+                              : "Evidence needs review"}
+                      </h2>
+                    </div>
+                    {!uploadState && (
+                      <button
+                        className="icon-btn"
+                        aria-label="Dismiss proof activity"
+                        onClick={() => setProofRun(undefined)}
+                      >
+                        <X size={18} />
+                      </button>
+                    )}
+                  </div>
+                  <p>
+                    {state.mode === "live"
+                      ? "Box MCP retrieves the evidence. BillReady validates the match and calculates billing readiness."
+                      : "Development rehearsal: evidence is checked locally; no Box MCP calls are made."}
+                  </p>
+                  {proofRun.reused ? (
+                    <p>
+                      Existing verified acceptance reused. No duplicate upload
+                      or new MCP calls were needed.
+                    </p>
+                  ) : state.mode === "development" ? (
+                    <p>
+                      Local rehearsal: BillReady checks the acceptance and
+                      recalculates billing without calling Box.
+                    </p>
+                  ) : (
+                    <ol className="proof-steps">
+                      {[
+                        {
+                          label:
+                            proofRun.valid &&
+                            !proofRun.tools.some(
+                              (t) => t.tool === "binary_upload",
+                            )
+                              ? "Use existing Box proof"
+                              : "Save proof in Box",
+                          done:
+                            proofRun.valid === true ||
+                            proofRun.tools.some(
+                              (t) =>
+                                t.tool === "binary_upload" &&
+                                t.status === "completed",
+                            ),
+                        },
+                        {
+                          label: "Confirm Box file",
+                          done: proofRun.tools.some(
+                            (t) =>
+                              t.tool === "list_folder_content_by_folder_id" &&
+                              t.status === "completed" &&
+                              t.seq >
+                                (proofRun.tools.find(
+                                  (t) => t.tool === "binary_upload",
+                                )?.seq ?? (proofRun.valid ? -1 : Infinity)),
+                          ),
+                        },
+                        {
+                          label: "Box AI reads acceptance",
+                          done: proofRun.tools.some(
+                            (t) =>
+                              t.tool === "ai_extract_freeform" &&
+                              t.status === "completed",
+                          ),
+                        },
+                        {
+                          label: "BillReady validates & updates UI",
+                          done: proofRun.valid === true,
+                        },
+                      ].map((step, i) => (
+                        <li
+                          key={step.label}
+                          className={step.done ? "complete" : ""}
+                        >
+                          <span>{step.done ? <Check size={14} /> : i + 1}</span>
+                          {step.label}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                  <div className="proof-outcome" role="status">
+                    {uploadState || proofRun.message}
+                    {proofRun.valid === false &&
+                      !proofRun.failed &&
+                      " Billing stays blocked until matching evidence is verified."}
+                  </div>
+                  {proofRun.valid && !proofRun.reused && (
+                    <div className="proof-delta">
+                      <span>
+                        Ready to bill
+                        <b>
+                          {money(proofRun.beforeReady ?? 0)} →{" "}
+                          {money(project.billing.ready)}
+                        </b>
+                      </span>
+                      <span>
+                        Blocked billing
+                        <b>
+                          {money(proofRun.beforeBlocked ?? 0)} →{" "}
+                          {money(project.billing.blocked)}
+                        </b>
+                      </span>
+                      <small>
+                        Updated after BillReady validated the acceptance
+                        evidence.
+                      </small>
+                    </div>
+                  )}
+                  <ToolActivity tools={proofRun.tools} live={!!uploadState} />
+                </section>
+              )}
+              {state.proposals
+                .filter(
+                  (p) =>
+                    p.projectId === project.id &&
+                    p.type === "billing" &&
+                    p.status === "prepared",
+                )
+                .slice(-1)
+                .map((p) => (
+                  <div key={p.id} className="saved-package-banner">
+                    <CheckCircle2 size={22} />
+                    <div>
+                      <b>Billing package saved</b>
+                      <span>
+                        Download your documents and prepare the email for your
+                        client.
+                      </span>
+                    </div>
+                    <button
+                      className="button dark small"
+                      onClick={() => setReviewId(p.id)}
+                    >
+                      Use saved package
+                      <ArrowUpRight size={14} />
+                    </button>
+                  </div>
+                ))}
               <section className="card project-work">
                 <div className="tabs">
                   {[
@@ -953,7 +1212,9 @@ function App() {
                         <span className="count">
                           {
                             state.documents.filter(
-                              (d) => d.projectId === project.id,
+                              (d) =>
+                                d.projectId === project.id &&
+                                isCustomerDocument(d),
                             ).length
                           }
                         </span>
@@ -1059,7 +1320,10 @@ function App() {
                       </button>
                     </div>
                     {state.documents
-                      .filter((d) => d.projectId === project.id)
+                      .filter(
+                        (d) =>
+                          d.projectId === project.id && isCustomerDocument(d),
+                      )
                       .map((d) => (
                         <div className="document-row" key={d.id}>
                           <div
@@ -1071,7 +1335,7 @@ function App() {
                             className="document-name"
                             onClick={() => openDoc(d.id)}
                           >
-                            <b>{d.name}</b>
+                            <b>{documentLabel(d)}</b>
                             <span>
                               {d.category}
                               {d.valid
@@ -1130,7 +1394,7 @@ function App() {
                                 {p.reference} ·{" "}
                                 {p.status === "prepared"
                                   ? p.type === "billing"
-                                    ? "Saved for billing · no email sent"
+                                    ? "Ready for handoff · open saved package"
                                     : p.resolved
                                       ? "Follow-up resolved · acceptance verified"
                                       : "Internal follow-up saved"
@@ -1143,7 +1407,7 @@ function App() {
                                 (p.status === "prepared" ? "green" : "amber")
                               }
                             >
-                              {p.status === "prepared" ? "Prepared" : "Review"}
+                              {p.status === "prepared" ? "Saved" : "Review"}
                             </span>
                             <ChevronRight size={16} />
                           </button>
@@ -1314,7 +1578,14 @@ function App() {
               <ChevronDown size={13} />
             </b>
           </div>
-          <div className="agent-scroll">
+          <div
+            className="agent-scroll"
+            onScroll={(event) => {
+              const el = event.currentTarget;
+              followActivity.current =
+                el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+            }}
+          >
             <div className="agent-welcome">
               <div className="sparkle-square">
                 <Sparkles size={23} />
@@ -1397,31 +1668,20 @@ function App() {
                   </div>
                 )}
                 <div className="message-text">{m.text}</div>
-                {m.tools && m.tools.length > 0 && (
-                  <details className="tool-trace">
-                    <summary>
-                      {state.mode === "live"
-                        ? "Remote tool activity"
-                        : "Development adapter activity"}{" "}
-                      · {m.tools.length} calls
-                    </summary>
-                    {m.tools.map((t, i) => (
-                      <div key={i}>
-                        <code>{t.tool}</code>
-                        <small>{t.detail}</small>
-                      </div>
-                    ))}
-                  </details>
-                )}
-                {m.sources?.length > 0 && (
+                {m.tools && <ToolActivity tools={m.tools} />}
+                {m.sources?.some((id) =>
+                  state.documents.some(
+                    (d) => d.id === id && isCustomerDocument(d),
+                  ),
+                ) && (
                   <div className="sources">
                     <span>SUPPORTING EVIDENCE</span>
                     {m.sources.map((id) => {
                       const d = state.documents.find((d) => d.id === id);
-                      return d ? (
+                      return d && isCustomerDocument(d) ? (
                         <button key={id} onClick={() => openDoc(id)}>
                           <FileText size={12} />
-                          {d.name}
+                          {documentLabel(d)}
                           <ArrowUpRight size={12} />
                         </button>
                       ) : null;
@@ -1437,17 +1697,28 @@ function App() {
                     <div>
                       <b>
                         {state.proposals.find((p) => p.id === m.proposalId)
-                          ?.type === "billing"
-                          ? "Review billing package"
-                          : "Review customer follow-up"}
+                          ?.status === "prepared"
+                          ? "Use saved package"
+                          : state.proposals.find((p) => p.id === m.proposalId)
+                                ?.type === "billing"
+                            ? "Review billing package"
+                            : "Review customer follow-up"}
                       </b>
-                      <span>Preview, edit & approve saving</span>
+                      <span>
+                        {state.proposals.find((p) => p.id === m.proposalId)
+                          ?.status === "prepared"
+                          ? "Download documents · prepare client email"
+                          : "Preview, edit & approve saving"}
+                      </span>
                     </div>
                     <ChevronRight size={16} />
                   </button>
                 )}
               </div>
             ))}
+            {busy && liveTools.length > 0 && (
+              <ToolActivity tools={liveTools} live />
+            )}
             {busy && (
               <div className="agent-thinking">
                 <LoaderCircle size={14} className="spin" />
@@ -1684,7 +1955,7 @@ function App() {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    {d.name}
+                    {documentLabel(d)}
                     <span>
                       {d.boxId ? "Box " + d.boxId : "Local rehearsal"}
                       <ExternalLink size={12} />
@@ -1724,6 +1995,159 @@ function Status({ p }: { p: Project }) {
     </span>
   );
 }
+function PackageHandoff({
+  proposal,
+  state,
+  notify,
+}: {
+  proposal: Proposal;
+  state: State;
+  notify: (v: { text: string; error?: boolean }) => void;
+}) {
+  const outputDocs = proposal.savedIds
+    .map((id) => state.documents.find((d) => d.id === id))
+    .filter((d): d is Doc => !!d && /\.pdf$/i.test(d.name));
+  const attachments =
+    proposal.type === "billing"
+      ? outputDocs
+      : proposal.attachments
+          .map((id) => state.documents.find((d) => d.id === id))
+          .filter((d): d is Doc => !!d && isCustomerDocument(d));
+  async function copyEmail() {
+    try {
+      await navigator.clipboard.writeText(
+        `To: ${proposal.to}\nSubject: ${proposal.subject}\n\n${proposal.body}`,
+      );
+      notify({
+        text: "Email copied. Paste it into your email app and attach the downloaded documents.",
+      });
+    } catch {
+      notify({
+        text: "Clipboard unavailable. Select and copy the email text below.",
+        error: true,
+      });
+    }
+  }
+  const emailUrl = `mailto:${encodeURIComponent(proposal.to)}?subject=${encodeURIComponent(proposal.subject)}&body=${encodeURIComponent(proposal.body)}`;
+  const folder =
+    state.folders[
+      proposal.projectId +
+        "/" +
+        (proposal.type === "billing" ? "04 Billing" : "05 Follow-ups")
+    ];
+  return (
+    <div className="package-handoff">
+      <div className="handoff-hero">
+        <CheckCircle2 size={30} />
+        <div>
+          <h2>Package saved. Prepare your client email.</h2>
+          <p>
+            {state.mode === "live"
+              ? "Your documents are saved in Box."
+              : "Your documents are saved locally."}{" "}
+            Choose your next step below.
+          </p>
+        </div>
+      </div>
+      <ol className="handoff-steps">
+        <li>
+          <b>1 · Check the invoice</b>
+          <span>
+            {proposal.type === "billing"
+              ? "These PDFs are drafts. Finalize and issue the invoice in your billing system when ready."
+              : "Review your acceptance request and supporting evidence."}
+          </span>
+        </li>
+        <li>
+          <b>2 · Download your documents</b>
+          <span>
+            The billing packet includes the invoice and supporting evidence.
+            Choose the files you want to attach.
+          </span>
+        </li>
+        <li>
+          <b>3 · Open your email app</b>
+          <span>
+            The recipient, subject and message are filled in. Attach your
+            downloaded files, review, then send from your email app.
+          </span>
+        </li>
+      </ol>
+      <h3>Documents for your client</h3>
+      <div className="handoff-files">
+        {attachments.map((d) => (
+          <div key={d.id}>
+            <FileText size={22} />
+            <div>
+              <b>{documentLabel(d)}</b>
+              <span>
+                {/packet/i.test(d.name)
+                  ? "Combined PDF with invoice and evidence"
+                  : "Saved PDF · review before sending"}
+              </span>
+            </div>
+            <a
+              className="button secondary small"
+              href={"/api/documents/" + d.id + "/content?download=1"}
+              download
+            >
+              <Download size={14} />
+              Download
+            </a>
+            {d.boxId && (
+              <a
+                href={"https://app.box.com/file/" + d.boxId}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={"Open " + documentLabel(d) + " in Box"}
+              >
+                <ExternalLink size={15} />
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="handoff-email">
+        <div className="handoff-email-head">
+          <h3>Your email</h3>
+          <button className="button secondary small" onClick={copyEmail}>
+            Copy email
+          </button>
+          <a className="button dark small" href={emailUrl}>
+            <Mail size={14} />
+            Open email app
+          </a>
+        </div>
+        <dl>
+          <div>
+            <dt>To</dt>
+            <dd>{proposal.to}</dd>
+          </div>
+          <div>
+            <dt>Subject</dt>
+            <dd>{proposal.subject}</dd>
+          </div>
+        </dl>
+        <div className="handoff-email-body">{proposal.body}</div>
+        <p className="handoff-note">
+          Opening your email app adds the text only. Attach the files you
+          downloaded above. BillReady does not send the email.
+        </p>
+      </div>
+      {folder && (
+        <a
+          className="text-button"
+          href={"https://app.box.com/folder/" + folder}
+          target="_blank"
+          rel="noreferrer"
+        >
+          View saved package in Box ↗
+        </a>
+      )}
+    </div>
+  );
+}
+
 function Review({
   proposal,
   state,
@@ -1739,9 +2163,18 @@ function Review({
   reload: () => Promise<void>;
   notify: (v: { text: string; error?: boolean }) => void;
 }) {
-  const [edit, setEdit] = useState(proposal);
+  const [edit, setEdit] = useState({
+    ...proposal,
+    attachments: proposal.attachments.filter((id) =>
+      state.documents.some((d) => d.id === id && isCustomerDocument(d)),
+    ),
+  });
   const [tab, setTab] = useState(
-    proposal.type === "billing" ? "invoice" : "email",
+    proposal.status === "prepared"
+      ? "handoff"
+      : proposal.type === "billing"
+        ? "invoice"
+        : "email",
   );
   const [saving, setSaving] = useState(false);
   if (!proposal) return null;
@@ -1777,7 +2210,7 @@ function Review({
               : "Internal follow-up approved. Customer email remains a draft.")
           : "Draft edits saved.",
       });
-      if (approve) close();
+      if (approve) setTab("handoff");
     } catch (e) {
       notify({ text: (e as Error).message, error: true });
     } finally {
@@ -1787,7 +2220,7 @@ function Review({
   return (
     <div className="modal-backdrop">
       <div
-        className="review-modal"
+        className={"review-modal review-" + tab}
         role="dialog"
         aria-modal="true"
         aria-label={
@@ -1813,7 +2246,7 @@ function Review({
             </div>
           </div>
           <span className={"badge " + (readonly ? "green" : "amber")}>
-            {readonly ? "Prepared for billing" : "Awaiting approval"}
+            {readonly ? "Saved · ready for handoff" : "Awaiting approval"}
           </span>
           <button
             className="icon-btn"
@@ -1825,24 +2258,33 @@ function Review({
         </div>
         <div className="tabs">
           {(proposal.type === "billing"
-            ? ["invoice", "email", "attachments"]
-            : ["email", "attachments"]
+            ? [
+                ...(readonly ? ["handoff"] : []),
+                "invoice",
+                "email",
+                "attachments",
+              ]
+            : [...(readonly ? ["handoff"] : []), "email", "attachments"]
           ).map((t) => (
             <button
               key={t}
               className={tab === t ? "selected" : ""}
               onClick={() => setTab(t)}
             >
-              {t === "invoice"
-                ? "Draft invoice"
-                : t === "email"
-                  ? "Email & follow-up"
-                  : "Evidence & attachments"}
+              {t === "handoff"
+                ? "Use saved package"
+                : t === "invoice"
+                  ? "Draft invoice"
+                  : t === "email"
+                    ? "Email & follow-up"
+                    : "Evidence & attachments"}
             </button>
           ))}
         </div>
         <div className="review-content">
-          {tab === "invoice" ? (
+          {tab === "handoff" && readonly ? (
+            <PackageHandoff proposal={proposal} state={state} notify={notify} />
+          ) : tab === "invoice" ? (
             <>
               <div className="review-summary">
                 <span>
@@ -1858,7 +2300,7 @@ function Review({
                   </b>
                 </span>
                 <span>
-                  Tax <b>$0 · demo assumption</b>
+                  Tax <b>$0</b>
                 </span>
                 <span>
                   Terms <b>Net 30 from issue</b>
@@ -1867,11 +2309,7 @@ function Review({
                   Status <b>DRAFT · not issued</b>
                 </span>
               </div>
-              <iframe
-                className="invoice-frame"
-                title="Draft invoice preview"
-                src={"/api/proposals/" + proposal.id + "/invoice"}
-              />
+              <PdfPreview url={"/api/proposals/" + proposal.id + "/invoice"} />
             </>
           ) : tab === "email" ? (
             <div className="email-editor">
@@ -1884,7 +2322,7 @@ function Review({
                 <input
                   aria-label="Email recipient"
                   value={edit.to}
-                  disabled={readonly}
+                  readOnly={readonly}
                   onChange={(e) => update("to", e.target.value)}
                 />
               </label>
@@ -1893,7 +2331,7 @@ function Review({
                 <input
                   aria-label="Email subject"
                   value={edit.subject}
-                  disabled={readonly}
+                  readOnly={readonly}
                   onChange={(e) => update("subject", e.target.value)}
                 />
               </label>
@@ -1903,7 +2341,7 @@ function Review({
                   aria-label="Email body"
                   rows={9}
                   value={edit.body}
-                  disabled={readonly}
+                  readOnly={readonly}
                   onChange={(e) => update("body", e.target.value)}
                 />
               </label>
@@ -1949,7 +2387,12 @@ function Review({
                 include.
               </p>
               {state.documents
-                .filter((d) => d.projectId === p.id && !d.generated)
+                .filter(
+                  (d) =>
+                    d.projectId === p.id &&
+                    !d.generated &&
+                    isCustomerDocument(d),
+                )
                 .map((d) => (
                   <div className="attachment-item" key={d.id}>
                     <input
@@ -1968,7 +2411,7 @@ function Review({
                     />
                     <FileText size={18} />
                     <button onClick={() => openDoc(d.id)}>
-                      <b>{d.name}</b>
+                      <b>{documentLabel(d)}</b>
                       <span>{d.analysis || d.category}</span>
                     </button>
                     <a
@@ -1984,14 +2427,14 @@ function Review({
                   <h3>Saved outputs</h3>
                   {proposal.savedIds.map((id) => {
                     const d = state.documents.find((d) => d.id === id);
-                    return d ? (
+                    return d && isCustomerDocument(d) ? (
                       <button
                         className="saved-output"
                         key={id}
                         onClick={() => openDoc(id)}
                       >
                         <CheckCircle2 size={16} />
-                        {d.name}
+                        {documentLabel(d)}
                         <ArrowUpRight size={14} />
                       </button>
                     ) : null;
@@ -2005,9 +2448,11 @@ function Review({
           <div>
             <ShieldCheck size={17} />
             <span>
-              {proposal.type === "billing"
-                ? "Approval prepares the package. It does not issue an invoice or send email."
-                : "Approval saves an internal follow-up and customer email draft only."}
+              {readonly
+                ? "Package saved. Download the documents and review the email in your email app."
+                : proposal.type === "billing"
+                  ? "Approval prepares the package. It does not issue an invoice or send email."
+                  : "Approval saves an internal follow-up and customer email draft only."}
             </span>
           </div>
           {readonly ? (

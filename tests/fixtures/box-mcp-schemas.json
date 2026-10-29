@@ -1,0 +1,181 @@
+[
+  {
+    "name": "who_am_i",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "list_folder_content_by_folder_id",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "folder_id": {
+          "type": "string",
+          "pattern": "^\\d+$"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 30
+        }
+      },
+      "required": [
+        "folder_id"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "get_folder_details",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "folder_id": {
+          "type": "string",
+          "pattern": "^\\d+$",
+          "description": "The unique identifier of the folder"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Specific fields to retrieve. If not specified, returns essential fields. Use to request additional metadata, permissions, etc."
+        }
+      },
+      "required": [
+        "folder_id"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "ai_qa_multi_file",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "file_ids",
+        "question"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "ai_extract_freeform",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "file_ids",
+        "prompt"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "upload_file",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file_content": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parent_folder_id": {
+          "type": "string",
+          "default": "0"
+        }
+      },
+      "required": [
+        "file_name",
+        "file_content"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "get_upload_url",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "file_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the file to create, including extension if applicable."
+        },
+        "file_size_bytes": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "parent_folder_id": {
+          "type": "string",
+          "default": "0"
+        },
+        "file_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "If provided, returns an upload URL for a new version of this existing file instead of creating a new file. When set, parent_folder_id is ignored."
+        }
+      },
+      "required": [
+        "file_name",
+        "file_size_bytes"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  }
+]

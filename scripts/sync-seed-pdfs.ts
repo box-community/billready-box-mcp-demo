@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { boxMcp } from "../server/box-mcp.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { remote, safeTransferUrl } from "../server/adapter.ts";
@@ -31,10 +32,10 @@ for (const d of targets) {
   console.log(`${d.boxId} ${d.name}`);
   if (!apply) continue;
   const bytes = fs.readFileSync(file);
-  const raw: any = await remote.semantic("get_upload_url", {
+  const raw: any = await boxMcp.callBoxTool("get_upload_url", {
     file_name: d.name,
-    file_size: bytes.length,
-    folder_id: d.folderId,
+    file_size_bytes: bytes.length,
+    parent_folder_id: d.folderId,
     file_id: d.boxId,
   });
   const find = (x: any): any => {
@@ -97,4 +98,4 @@ if (apply)
       2,
     ),
   );
-await remote.client?.close();
+await boxMcp.client?.close();

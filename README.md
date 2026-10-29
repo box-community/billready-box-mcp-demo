@@ -48,9 +48,33 @@ flowchart TB
 
 The SDK is a **client dependency**, not a replacement Box MCP server. BillReady does not host an MCP server or use the Box Community MCP server. The browser calls the local backend; only the backend authenticates to Box. There is no Box SDK dependency. Ordinary content operations and Box AI calls go through remote MCP. Binary transfers use the temporary Box URLs returned by MCP, as described below.
 
+### Developer walkthrough: follow one request
+
+```mermaid
+flowchart LR
+    UI[User message] --> Chat[chat]
+    Chat --> Planner[planWithBoxAI]
+    Planner --> MCP[callBoxTool / MCP SDK]
+    MCP --> Hosted[Box hosted MCP + Box AI]
+    Planner --> Action[executeAllowedPlan]
+    Action --> Rules[Evidence validation / review proposal]
+    Rules --> MCP
+    MCP --> Trace[Sanitized trace events]
+    Trace --> UI
+```
+
+1. **Connect:** [`BoxMcpClient.open()`](server/box-mcp.ts) creates the official SDK client and Streamable HTTP transport for `https://mcp.box.com`. [`auth.ts`](server/auth.ts) exchanges and refreshes tokens server-side.
+2. **Discover tools:** the same `open()` method paginates `client.listTools()`. Schemas come from the connected server. `npm run box:inspect` saves a local snapshot for inspection.
+3. **Execute a remote call:** [`callBoxTool()`](server/box-mcp.ts) reuses a validator, then executes **`client.callTool({ name, arguments: args })`** inside `traceCall()`. There are no argument aliases or configurable schema translations. For example, Q&A passes `{ file_ids, question }`; PDF upload URL requests pass `{ parent_folder_id, file_name, file_size_bytes }`.
+4. **Interpret the request:** [`planWithBoxAI()`](server/box-agent.ts) sends scoped evidence, current financial facts, and conversation history through `ai_qa_multi_file`. Zod accepts only `answer`, `discover`, `followup`, or `billing` plans.
+5. **Enforce the workflow:** [`executeAllowedPlan()`](server/box-agent.ts) checks the project and selects an allowed action. [`reassess()` / `discover()`](server/workflow.ts) validate client, project, milestone, signature, and affirmative acceptance. [`discoveryReply()`](server/discovery-result.ts) reports verified evidence or a remaining blocker. Billing creates a proposal; only the separate owner approval route calls `approve()` to save drafts. Nothing issues an invoice or sends email.
+6. **Follow actual activity:** [`traceCall()` / `withTrace()`](server/tracing.ts) capture sanitized parameters, status, timing, and bounded results at SDK execution. [`POST /api/chat/:context/stream`](server/index.ts) streams request-scoped events to [`ToolActivity`](src/ToolActivity.tsx). Transfer events are separately labeled because binary bytes travel to MCP-issued URLs.
+
+[`chat()`](server/agent.ts) is the entry point. Live mode chooses Box AI by default; the optional OpenAI conversation provider remains explicit. Deterministic rehearsal replies live in `chatInDevelopment()` and are never used as a live fallback. [`box-content.ts`](server/box-content.ts) holds scoped file operations; [`adapter.ts`](server/adapter.ts) keeps local development content separate from those live operations.
+
 ### How Box MCP is used
 
-On connection, `server/adapter.ts` retrieves the actual `tools/list` schemas. Semantic argument mappings adapt common field names to the tenant's schema, and AJV validates arguments before invocation. Missing tools or unsupported contracts produce errors; live mode does not fall back to simulated success.
+On connection, `server/box-mcp.ts` retrieves the actual `tools/list` schemas. Call sites pass explicit arguments matching Box's hosted schemas; AJV compiles each used validator once and reuses it before invocation. Missing tools or unsupported contracts produce errors; live mode does not fall back to simulated success.
 
 | Remote tool                        | Use in BillReady                                                                                                    |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -184,7 +208,7 @@ This retrieves actual remote schemas into ignored `verification/box-tool-schemas
 
 **Do not refresh all projects from Overview before the opening scene** if you want the initial $34,000 blocked headline: a workspace refresh discovers Northstar's acceptance immediately. The [walkthrough](demo-kit/DEMO_SCRIPT.md) explains the intended order.
 
-Official setup references: [Box MCP setup](https://developer.box.com/guides/box-mcp/setup), [Box MCP tools](https://docs.box.com/en/box-mcp/tools), and [Box OAuth flow](https://developer.box.com/guides/authentication/oauth2/without-sdk). See the [detailed setup guide](demo-kit/SETUP.md) for schema overrides, transfer behavior, and refresh details.
+Official setup references: [Box MCP setup](https://developer.box.com/guides/box-mcp/setup), [Box MCP tools](https://docs.box.com/en/box-mcp/tools), and [Box OAuth flow](https://developer.box.com/guides/authentication/oauth2/without-sdk). See the [detailed setup guide](demo-kit/SETUP.md) for schema inspection, transfer behavior, and refresh details.
 
 ### Configuration reference
 
@@ -199,7 +223,6 @@ Official setup references: [Box MCP setup](https://developer.box.com/guides/box-
 | `BOX_DEMO_ROOT_ID`                   | One nonzero uploaded root folder ID; required in live mode                                   |
 | `AGENT_PROVIDER`                     | `box`; default live agent uses Box AI via MCP                                                |
 | `BOX_MCP_TOKEN`                      | Optional bearer override; takes priority over OAuth cache and does not refresh automatically |
-| `BOX_MCP_SCHEMA_MAP`                 | Optional local JSON path mapping semantic arguments to tenant-specific schema names          |
 | `DATA_DIR`                           | Defaults to `data/development` or `data/live`; use a fresh store when changing root/identity |
 | `OPENAI_API_KEY`, `OPENAI_MODEL`     | Only for optional `AGENT_PROVIDER=openai`; unnecessary for Box AI                            |
 
@@ -253,7 +276,7 @@ Live reset uses remote MCP to archive recorded application-owned files under `Bi
 
 The end-to-end test requires installed Google Chrome and a free port 4311. It creates its own `data/e2e` store and does not use the ordinary live application store. The live-view test requires the configured live server and Box access. Utility scripts for targeted live verification and seed-version maintenance live in `scripts/`; these are rehearsal-specific operations, not quick-start requirements. Read them before running, especially scripts that upload or approve artifacts. PDF rendering via `scripts/render-kit.py` additionally requires Python with Pillow and Poppler utilities (`pdftoppm` and `pdfinfo`) on PATH.
 
-The implementation was verified with build/type checks, 10 automated tests, a complete development browser workflow, actual Box OAuth/MCP/Box AI operations, saved-and-downloaded live artifacts, idempotent approval, archive reset, and desktop/mobile rendering. See [verification details and limits](docs/verification.md). Rehearsal transcripts, actual account/folder IDs, downloaded live output manifests, and runtime reports are intentionally excluded from Git.
+The implementation was verified with build/type checks, 25 automated tests, a complete development browser workflow, actual Box OAuth/MCP/Box AI operations, saved-and-downloaded live artifacts, idempotent approval, archive reset, and desktop/mobile rendering. See [verification details and limits](docs/verification.md). Rehearsal transcripts, actual account/folder IDs, downloaded live output manifests, and runtime reports are intentionally excluded from Git.
 
 ## Project layout
 
@@ -261,9 +284,13 @@ The implementation was verified with build/type checks, 10 automated tests, a co
 src/                 React application and styling
 server/
   index.ts           Express API and frontend serving
-  adapter.ts         Development adapter and remote Box MCP client
+  adapter.ts         Explicit live/development content boundary
+  box-mcp.ts         Hosted MCP connection, discovered schemas, callBoxTool
+  box-content.ts     Scoped inventory, uploads, archive and transfer helpers
   auth.ts            OAuth authorization and token refresh
-  box-agent.ts       Box AI conversation planning
+  box-agent.ts       Box AI planning and allowed-action execution
+  discovery-result.ts Verified discovery replies
+  tracing.ts         Request-scoped, sanitized live tool activity
   agent.ts           Agent routing and optional OpenAI provider
   workflow.ts        Evidence validation, proposals, approval and saving
   domain.ts          Project seed, exact-cents financial rules
@@ -275,6 +302,22 @@ demo-kit/            Upload ZIP/tree, presenter file, manifests and runbook
 docs/                Curated verification record and UI screenshots
 .env.example         Credential-free configuration template
 ```
+
+## Inspect live Box MCP activity
+
+Ask a question in the BillReady agent. **Box MCP activity** appears while tools are running, before the answer arrives. Expand any call to inspect the exact parameters sent to Box, bounded result JSON, status, and elapsed time. Use **Details** to expand all calls or **Compact** to scan labels and result counts. Folder/file parameters include links back to Box. Older chat messages retain their original summary-only trace; new calls include detailed payloads.
+
+The browser receives request-scoped server-sent events through `POST /api/chat/:context/stream`. The same trace is saved with the completed answer. Parallel calls remain separate, and another request's activity is excluded. Binary uploads/downloads have their own labels because they use MCP-issued transfer URLs rather than MCP tool invocations. Credentials, authorization values, signed URLs, and binary bodies are removed server-side; long prompts/results are bounded. Prompts and returned document text may still contain business content and are intentionally visible in Details to the local app user.
+
+For a live walkthrough, ask **Find the missing acceptance document**, expand a folder-list call to show its `folder_id` and result count, then inspect the `ai_qa_multi_file` call for selected file IDs and the prompt. Collapse the activity to continue the business workflow.
+
+## Proof upload and client handoff
+
+Uploading acceptance now streams its actual tool calls through `POST /api/projects/:pid/acceptance/stream`. The project view shows save → Box read-back → Box AI extraction → application validation, followed by before/after billing amounts. MCP supplies the file and extracted evidence; BillReady validates the client/project/milestone/signature and computes amounts in integer cents. A final `/api/state` read updates the browser. Failed or mismatched evidence leaves billing blocked. Development mode is explicitly labeled and makes no remote MCP calls.
+
+Tool details present request fields, linked IDs, readable AI instructions, and structured response cards. Raw JSON remains in a separate developer disclosure. The invoice review uses a fitted PDF.js page with zoom and a full-screen link. After approval, **Use saved package** provides document downloads, a copyable email, and **Open email app**. The email-app link supplies text only; the user attaches the downloaded files and sends manually. PDFs remain drafts until finalized and issued in the user's billing system. Nothing sends or issues automatically.
+
+Normal document and attachment lists hide JSON manifests and README/setup files, using customer-friendly names instead. Internal files remain in Box and presenter controls. The backend also rejects technical manifests as customer attachments.
 
 ## Troubleshooting
 

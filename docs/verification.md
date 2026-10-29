@@ -2,6 +2,23 @@
 
 BillReady was verified on October 21, 2026 with Node.js 26 and Chrome. These results describe the implementation rehearsal; each new installation still needs its own Box authorization and root configuration. Raw account-specific reports remain local and are excluded from the repository.
 
+## Workflow UX verification — October 29, 2026
+
+- Build and 25 tests pass, including upload SSE parsing, customer document visibility, rejection of technical manifests as attachments, and a fixture proving the MCP upload URL → binary transfer → folder read-back → AI extraction sequence occurs before readiness changes. No live Box content was mutated by these tests.
+- Isolated development HTTP upload checks rejected wrong-project proof and accepted matching proof; the new streaming route retained exact totals. Browser checks confirmed the upload progress and before/after amounts, clean attachment choices, and approval transitioning directly into the handoff view.
+- The current live saved package was inspected read-only in the browser: customer-facing download/email actions are present, and the complete draft invoice renders in the fitted viewer. Copy/mail-app actions require an explicit user click; launching an external mail application and sending were not automated.
+- The fitted viewer is lazy-loaded. Raw JSON is available only in developer trace detail; internal files remain in storage/presenter controls.
+
+## Refactor verification — October 28, 2026
+
+- Current build/type checks and **20 automated tests** passed. Regression tests use isolated temporary stores and fixtures: missing acceptance stays blocked; wrong-project/unsigned evidence cannot unlock billing; matching signed evidence unlocks only its milestone; discovery reports verified state; owner approval and repeated saves remain protected; SDK errors and traces redact credentials; unknown providers and missing live auth fail visibly. Cached-validator and offset-pagination checks passed.
+- An isolated development HTTP workflow passed through actual Express routes: missing discovery, wrong-project upload, correct upload and upload retry, review proposal, rejection without explicit approval, four saved draft files, repeated approval without duplicates, and unchanged invoiced/outstanding totals. This is fixture verification, not a live Box mutation test.
+- Read-only checks using the refactored official MCP SDK client discovered **51 hosted tools**, called `who_am_i`, verified/listed the configured root, and obtained a Box AI `answer` plan explaining the current $18,000 blocker. No live files were uploaded, moved, deleted, or reset for this refactor. OAuth token refresh remains part of normal authentication.
+- The live application and expandable activity panel were inspected in the browser after a new read-only chat request: tool names, timing, selected file IDs, and actual request parameters remain visible. Detailed signed transfer output and failure scenarios are covered by fixtures rather than new live transfers.
+- The video project, credential configuration, and Box permissions were not changed. The optional OpenAI conversation provider was preserved but was not exercised against a live OpenAI account in this refactor.
+
+The following sections preserve the earlier implementation verification; they are historical checks, not claims of new live mutation testing.
+
 ## Automated checks
 
 - TypeScript checking and Vite production build passed.

@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { boxMcp } from "../server/box-mcp.ts";
 import fs from "node:fs";
 import { remote } from "../server/adapter.ts";
 import { get, put } from "../server/store.ts";
@@ -32,4 +33,4 @@ console.log(
   "Added one explicitly tracked rehearsal acceptance directly to project records:",
   d.boxId,
 );
-await remote.client?.close();
+await boxMcp.client?.close();

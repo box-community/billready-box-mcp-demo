@@ -72,3 +72,33 @@ test("prevents issued, incomplete, blocked and duplicate invoice milestones", ()
     assert.throws(() => assertBillable(p, [...ids]));
   assert.equal(assertBillable(ps[1], ["M3"])[0].cents, 2400000);
 });
+
+test("discovery cannot claim acceptance from unrelated or unverified evidence", async () => {
+  const { discoveryReply } = await import("../server/discovery-result.ts");
+  const p = seedProjects()[0];
+  const missing = discoveryReply(p, []);
+  assert.match(missing.text, /did not find verified signed acceptance/);
+  assert.match(missing.text, /\$18,000 remains blocked/);
+  assert.deepEqual(missing.sources, []);
+  const doc = {
+    id: "box-proof",
+    projectId: p.id,
+    name: "signed-acceptance.pdf",
+    category: "Acceptance",
+    valid: true,
+  };
+  p.milestones[2].accepted = true;
+  p.milestones[2].acceptanceFileId = doc.id;
+  for (const docs of [
+    [],
+    [{ ...doc, valid: false }],
+    [{ ...doc, projectId: "CW-102" }],
+  ]) {
+    assert.match(discoveryReply(p, docs).text, /remains blocked/);
+    assert.deepEqual(discoveryReply(p, docs).sources, []);
+  }
+  const found = discoveryReply(p, [doc]);
+  assert.match(found.text, /found and verified/);
+  assert.match(found.text, /\$18,000 is ready to bill/);
+  assert.deepEqual(found.sources, [doc.id]);
+});

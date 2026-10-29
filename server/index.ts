@@ -1,3 +1,4 @@
+import { withTrace, sanitizeTrace } from "./tracing.ts";
 import "dotenv/config";
 import { authRoutes, hasBoxAuth } from "./auth.ts";
 import express from "express";
@@ -89,59 +90,115 @@ app.get("/api/chat/:context", (req, res) =>
 );
 app.post("/api/chat/:context", async (req, res) => {
   const text = z.string().min(1).max(4000).parse(req.body.text);
-  res.json(await serial(() => chat(req.params.context, text)));
+  res.json(
+    await serial(() =>
+      withTrace(
+        () => {},
+        () => chat(req.params.context, text),
+      ),
+    ),
+  );
+});
+// Chat and upload share one request-scoped stream of actual tool calls.
+async function streamWorkflow(
+  res: express.Response,
+  run: () => Promise<unknown>,
+) {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+  const send = (event: string, data: unknown) => {
+    if (!res.destroyed && !res.writableEnded)
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+  const heartbeat = setInterval(() => {
+    if (!res.destroyed) res.write(": keepalive\n\n");
+  }, 15000);
+  try {
+    send(
+      "reply",
+      await serial(() => withTrace((entry) => send("tool", entry), run)),
+    );
+  } catch (error) {
+    send("failure", { error: String(sanitizeTrace((error as Error).message)) });
+  } finally {
+    clearInterval(heartbeat);
+    res.end();
+  }
+}
+app.post("/api/chat/:context/stream", async (req, res) => {
+  const text = z.string().min(1).max(4000).parse(req.body.text);
+  await streamWorkflow(res, () => chat(req.params.context, text));
 });
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
 });
+async function uploadAcceptance(
+  pid: string,
+  file: Express.Multer.File | undefined,
+  defer = false,
+) {
+  const p = projects().find((p) => p.id === pid);
+  if (!p) throw Error("Unknown project");
+  if (!file || !file.buffer.subarray(0, 5).equals(Buffer.from("%PDF-")))
+    throw Error("Upload a readable PDF (up to 10 MB).");
+  const digest = hash(file.buffer);
+  const prev = documents().find(
+    (d) => d.hash === digest && d.projectId === p.id,
+  );
+  if (prev?.valid)
+    return {
+      document: prev,
+      valid: true,
+      message: "Acceptance already verified. No duplicate upload.",
+    };
+  const name = `${p.id}-acceptance-${digest.slice(0, 12)}.pdf`;
+  let d = prev || {
+    ...(await persistFile(file.buffer, name, p.id, "03 Acceptance")),
+    hash: digest,
+    generated: false,
+  };
+  addDoc(d);
+  activity(
+    "Acceptance uploaded. Checking client, project, milestone, and signature.",
+    p.id,
+  );
+  if (defer) return { document: d, uploaded: true };
+  const result = await reassess(p.id, [d]);
+  d = documents().find((x) => x.id === d.id)!;
+  return {
+    document: d,
+    valid: !!d.valid,
+    message: d.valid
+      ? "Acceptance verified. Final milestone is ready to bill."
+      : d.analysis ||
+        "No matching signed acceptance was found. Review required.",
+    results: result,
+  };
+}
 app.post(
   "/api/projects/:pid/acceptance",
   upload.single("file"),
   async (req, res) => {
     res.json(
-      await serial(async () => {
-        const p = projects().find((p) => p.id === req.params.pid);
-        if (!p) throw Error("Unknown project");
-        if (
-          !req.file ||
-          !req.file.buffer.subarray(0, 5).equals(Buffer.from("%PDF-"))
-        )
-          throw Error("Upload a readable PDF (up to 10 MB).");
-        const digest = hash(req.file.buffer);
-        const prev = documents().find(
-          (d) => d.hash === digest && d.projectId === p.id,
-        );
-        if (prev?.valid)
-          return {
-            document: prev,
-            valid: true,
-            message: "Acceptance already verified. No duplicate upload.",
-          };
-        const name = `${p.id}-acceptance-${digest.slice(0, 12)}.pdf`;
-        let d = prev || {
-          ...(await persistFile(req.file.buffer, name, p.id, "03 Acceptance")),
-          hash: digest,
-          generated: false,
-        };
-        addDoc(d);
-        activity(
-          "Acceptance uploaded. Checking client, project, milestone, and signature.",
-          p.id,
-        );
-        if (req.query.defer === "1") return { document: d, uploaded: true };
-        const result = await reassess(p.id, [d]);
-        d = documents().find((x) => x.id === d.id)!;
-        return {
-          document: d,
-          valid: !!d.valid,
-          message: d.valid
-            ? "Acceptance verified. Final milestone is ready to bill."
-            : d.analysis ||
-              "No matching signed acceptance was found. Review required.",
-          results: result,
-        };
-      }),
+      await serial(() =>
+        uploadAcceptance(
+          String(req.params.pid),
+          req.file,
+          req.query.defer === "1",
+        ),
+      ),
+    );
+  },
+);
+app.post(
+  "/api/projects/:pid/acceptance/stream",
+  upload.single("file"),
+  async (req, res) => {
+    await streamWorkflow(res, () =>
+      uploadAcceptance(String(req.params.pid), req.file),
     );
   },
 );

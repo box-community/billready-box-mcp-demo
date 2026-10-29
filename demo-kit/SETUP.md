@@ -80,13 +80,7 @@ npm run box:inspect
 
 This connects to remote Box MCP and writes the actual `tools/list` schemas to `verification/box-tool-schemas.json`. It never writes tokens. Tool access and schemas are discovered at runtime; the backend validates arguments against the actual schema before each call. A missing tool or required argument is an actionable error, never a silent simulation.
 
-The shipped mappings support documented tool names and common schema names. If the tenant exposes a different argument name, set `BOX_MCP_SCHEMA_MAP` to a local JSON file mapping semantic names to actual names, for example:
-
-```json
-{ "get_upload_url": { "folder_id": "parent_folder_id", "file_name": "name" } }
-```
-
-This is a schema compatibility override, not permission to change the configured root. If the server has a different response/transfer contract, inspect the saved schemas and update the adapter before calling the live setup complete.
+The call sites in `server/box-mcp.ts`, `server/box-content.ts`, and `server/box-agent.ts` use explicit parameters matching the inspected hosted schemas. For example, Q&A uses `question`, text upload uses `file_content` and `parent_folder_id`, and PDF upload URLs use `file_size_bytes`. Validators are compiled once per used tool and reused. There are no schema aliases or overrides. If Box changes a contract, inspect the schemas and update the relevant call site; mismatches fail visibly rather than guessing arguments.
 
 ## First live refresh and checks
 

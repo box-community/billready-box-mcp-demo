@@ -1,3 +1,4 @@
+import { isCustomerDocument } from "../shared/customer-documents.ts";
 import { PDFDocument as PDFBinder } from "pdf-lib";
 import fs from "node:fs";
 import path from "node:path";
@@ -252,11 +253,16 @@ export function editProposal(id: string, input: unknown) {
     edits.attachments.some(
       (id) =>
         !documents().some(
-          (d) => d.id === id && d.projectId === existing.projectId,
+          (d) =>
+            d.id === id &&
+            d.projectId === existing.projectId &&
+            isCustomerDocument(d),
         ),
     )
   )
-    throw Error("Attachments must belong to this project");
+    throw Error(
+      "Attachments must be customer-facing documents from this project",
+    );
   if (
     edits.attachments.some(
       (id) => documents().find((d) => d.id === id)?.valid === false,
