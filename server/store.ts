@@ -2,7 +2,12 @@ import { currentEmployee } from "./context.ts";
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
-import { seedProjects, type Project, DEMO_DATE } from "./domain.ts";
+import {
+  seedProjects,
+  projectOwner,
+  type Project,
+  DEMO_DATE,
+} from "./domain.ts";
 export const dataDir = path.resolve(
   process.env.DATA_DIR ||
     "data/" + (process.env.BILLREADY_ADAPTER || "development"),
@@ -12,7 +17,7 @@ export function storageDir() {
   if (!scope) return dataDir;
   scope.assertActive();
   if (!scope.workspace) throw Error("Choose a workspace folder first.");
-  return path.join(
+  return path.resolve(
     process.env.EMPLOYEE_DATA_DIR || "data/employees",
     scope.employee.id,
     scope.workspace.id,
@@ -66,8 +71,19 @@ export function put(key: string, value: unknown) {
     )
     .run(key, JSON.stringify(value));
 }
-export const projects = () =>
-  get<Project[]>("projects", currentEmployee() ? [] : seedProjects());
+export function projects() {
+  const stored = get<Project[]>(
+    "projects",
+    currentEmployee() ? [] : seedProjects(),
+  );
+  const updated = stored.map((p) => ({
+    ...p,
+    owner: projectOwner(p.businessId || p.id, p.owner),
+  }));
+  if (stored.some((p, i) => p.owner !== updated[i].owner))
+    put("projects", updated);
+  return updated;
+}
 export function updateProject(p: Project) {
   put(
     "projects",
@@ -82,6 +98,7 @@ export type Doc = {
   path?: string;
   folderId?: string;
   boxId?: string;
+  etag?: string;
   generated?: boolean;
   hash?: string;
   analysis?: string;

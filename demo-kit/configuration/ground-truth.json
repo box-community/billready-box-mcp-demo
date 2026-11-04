@@ -29,8 +29,6 @@
     "blocked": 0,
     "ready": 5800000
   },
-  "heroFinalMilestoneCents": 1800000,
-  "preparedDoesNotChangeFinancials": true,
   "projects": [
     {
       "projectId": "CW-101",
@@ -97,5 +95,7 @@
         "ready": 0
       }
     }
-  ]
+  ],
+  "heroFinalMilestoneCents": 1800000,
+  "preparedDoesNotChangeFinancials": true
 }

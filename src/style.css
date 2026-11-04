@@ -3566,6 +3566,33 @@ td:first-child {
     font-size: 30px;
   }
 }
-.reset-file { display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--border); }
-.reset-file span { flex:1; overflow-wrap:anywhere; }
-.reset-file a { color:#0061d5; font-size:11px; white-space:nowrap; }
+.reset-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.reset-file span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.reset-file a {
+  color: #0061d5;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.pdf-preview-error {
+  max-width: 540px;
+  padding: 24px;
+  text-align: center;
+}
+.pdf-preview-error p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+.pdf-preview-error > a {
+  display: inline-block;
+  margin-left: 14px;
+  color: #0061d5;
+}

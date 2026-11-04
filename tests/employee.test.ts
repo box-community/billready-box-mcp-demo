@@ -6,7 +6,10 @@ import path from "node:path";
 const temporary = fs.mkdtempSync(
   path.join(os.tmpdir(), "billready-employees-"),
 );
-process.env.EMPLOYEE_DATA_DIR = path.join(temporary, "employees");
+process.env.EMPLOYEE_DATA_DIR = path.relative(
+  process.cwd(),
+  path.join(temporary, "employees"),
+);
 process.env.EMPLOYEE_AUTH_FILE = path.join(temporary, "accounts.json");
 process.env.DATA_DIR = path.join(temporary, "legacy-must-not-be-opened");
 process.env.BILLREADY_ADAPTER = "live";
@@ -147,6 +150,7 @@ BoxMcpClient.prototype.callBoxTool = async function (tool, args) {
         name: names[id] || "Project folder",
         shared_link: null,
         has_collaborations: true,
+        path_collection: { entries: [{ id: rootOf(id) || id }] },
       };
     if (tool === "list_folder_content_by_folder_id") {
       if (failListing) throw Error("503 temporary listing failure");
@@ -471,6 +475,13 @@ test("employee OAuth and workspace workflow isolates accounts and enforces curre
         );
         assert.equal(invoice.status, 200);
         assert.equal(invoice.headers.get("content-type"), "application/pdf");
+        assert.equal(
+          Buffer.from(await invoice.arrayBuffer())
+            .subarray(0, 5)
+            .toString(),
+          "%PDF-",
+          "invoice endpoint must return PDF bytes with a relative employee data directory",
+        );
         const [first, second] = await Promise.all([
           a.post("/api/proposals/" + proposalId + "/approve", {
             confirm: true,
@@ -605,10 +616,24 @@ test("employee OAuth and workspace workflow isolates accounts and enforces curre
         );
         const retry = await (await a.post("/api/reset/preview", {})).json();
         assert.equal(retry.files.length, 4);
+        const callStart = transcript.length;
+        const aiStart = aiCalls;
         const result = await a.post("/api/reset/apply", {
           confirm: true,
           fingerprint: retry.fingerprint,
         });
+        assert.equal(
+          transcript
+            .slice(callStart)
+            .filter((call) => call.tool === "get_file_content").length,
+          1,
+          "apply performs one inventory, not repeated full scans",
+        );
+        assert.equal(
+          aiCalls,
+          aiStart,
+          "removing extra proof does not require another AI extraction",
+        );
         assert.equal(result.status, 200, await result.clone().text());
         const after = await a.state();
         assert.equal(after.totals.blocked, 1800000);
@@ -650,6 +675,106 @@ test("employee OAuth and workspace workflow isolates accounts and enforces curre
         const colleague = await b.state();
         assert.equal(colleague.totals.blocked, 1800000);
         assert.equal(colleague.proposals.length, 0);
+      },
+    );
+    await t.test(
+      "manual cleanup reset checks only the hero, does not write to Box or call AI, and cached reads do not queue behind AI",
+      async () => {
+        await a.post("/api/workspace", { folderId: "200" });
+        await a.state();
+        const proof = new FormData();
+        proof.set(
+          "file",
+          new Blob(
+            [
+              fs.readFileSync(
+                "demo-kit/presenter-only/CW-101-signed-acceptance.pdf",
+              ),
+            ],
+            { type: "application/pdf" },
+          ),
+          "acceptance.pdf",
+        );
+        assert.equal(
+          (
+            await a.request("/api/projects/CW-101~210/acceptance", {
+              method: "POST",
+              body: proof,
+            })
+          ).status,
+          200,
+        );
+        assert.equal((await a.state()).totals.ready, 1800000);
+        // The employee removes the proof directly in Box, outside the application.
+        for (const [id, file] of uploaded)
+          if (file.folder === "2103") uploaded.delete(id);
+        const fileId = "799999";
+        uploaded.set(fileId, {
+          id: fileId,
+          name: "leftover-invoice.pdf",
+          folder: "2104",
+          bytes: Buffer.from("%PDF-fixture"),
+        });
+        assert.equal(
+          (await a.post("/api/reset/after-cleanup", { confirm: true })).status,
+          400,
+          "remaining generated outputs must be removed first",
+        );
+        uploaded.delete(fileId);
+        const calls = transcript.length,
+          aiBefore = aiCalls;
+        const result = await a.post("/api/reset/after-cleanup", {
+          confirm: true,
+        });
+        assert.equal(result.status, 200, await result.clone().text());
+        const actual = transcript.slice(calls);
+        assert.ok(
+          actual.every((c) =>
+            ["get_folder_details", "list_folder_content_by_folder_id"].includes(
+              c.tool,
+            ),
+          ),
+        );
+        assert.equal(
+          actual.filter((c) => c.tool === "list_folder_content_by_folder_id")
+            .length,
+          4,
+        );
+        assert.equal(aiCalls, aiBefore);
+        const state = await a.state();
+        assert.equal(state.totals.blocked, 1800000);
+        assert.equal(state.proposals.length, 0);
+        assert.equal(
+          (await anon.post("/api/reset/after-cleanup", { confirm: true }))
+            .status,
+          401,
+        );
+        let release!: () => void;
+        const held = store.serial(
+          () =>
+            new Promise<void>((resolve) => {
+              release = resolve;
+            }),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        try {
+          const answer = await Promise.race([
+            a.state(),
+            new Promise((_, reject) =>
+              setTimeout(
+                () =>
+                  reject(Error("cached read waited behind the mutation queue")),
+                500,
+              ),
+            ),
+          ]);
+          assert.ok(answer);
+        } finally {
+          release();
+          await held;
+        }
+        await a.post("/api/workspace", { folderId: "900" });
+        await a.state();
       },
     );
     await t.test(
@@ -835,4 +960,166 @@ test("concurrent context isolates state, traces and files, and stale contexts fa
     ),
     null,
   );
+});
+
+test("reset reuses only unchanged verified Box file revisions and bounds parallel folder reads", async () => {
+  const seed = seedProjects()[1];
+  let version = "v1",
+    extractionCalls = 0,
+    activeReads = 0,
+    peakReads = 0;
+  const folderNames = [
+    "01 Project records",
+    "02 Delivery evidence",
+    "03 Acceptance",
+    "04 Billing",
+    "05 Follow-ups",
+  ];
+  const mcp = {
+    callBoxTool: async (name: string, args: any): Promise<any> => {
+      if (name === "get_folder_details")
+        return {
+          id: args.folder_id,
+          name: "Versioned sample",
+          shared_link: null,
+        };
+      if (name === "get_file_content") return JSON.stringify(seed);
+      if (name === "ai_extract_freeform") {
+        extractionCalls++;
+        return {
+          projectId: "CW-102",
+          client: seed.client,
+          milestoneId: "M3",
+          signed: false,
+          accepted: false,
+          signer: "",
+          date: "2026-10-15",
+          quote: "",
+        };
+      }
+      if (name === "list_folder_content_by_folder_id") {
+        activeReads++;
+        peakReads = Math.max(peakReads, activeReads);
+        await new Promise((resolve) => setTimeout(resolve, 2));
+        activeReads--;
+        const id = args.folder_id;
+        const entries =
+          id === "500"
+            ? [{ id: "510", name: "CW-102 Marlow Hotel", type: "folder" }]
+            : id === "510"
+              ? folderNames.map((name, i) => ({
+                  id: "510" + (i + 1),
+                  name,
+                  type: "folder",
+                }))
+              : id === "5101"
+                ? [
+                    {
+                      id: "51010",
+                      name: "project.json",
+                      type: "file",
+                      etag: "record-v1",
+                    },
+                  ]
+                : id === "5103"
+                  ? [
+                      {
+                        id: "51030",
+                        name: "CW-102-signed-acceptance.pdf",
+                        type: "file",
+                        etag: version,
+                      },
+                    ]
+                  : [];
+        return { entries, total_count: entries.length };
+      }
+      throw Error("Unexpected network or write: " + name);
+    },
+  };
+  const scope = {
+    employee: { id: "303", name: "Version test", email: "version@example.com" },
+    workspace: { id: "500", name: "Versioned sample" },
+    mcp: mcp as any,
+    traces: [],
+    assertActive: () => {},
+  };
+  const { previewReset, applyReset } =
+    await import("../server/reset-workspace.ts");
+  await employeeContext.run(scope, async () => {
+    store.initialize([]);
+    const project = {
+      ...seed,
+      id: "CW-102~510",
+      businessId: "CW-102",
+      folderId: "510",
+      milestones: seed.milestones.map((m) =>
+        m.id === "M3"
+          ? { ...m, accepted: true, acceptanceFileId: "box-51030" }
+          : m,
+      ),
+    };
+    store.put("projects", [project]);
+    store.put("documents", [
+      {
+        id: "box-51030",
+        boxId: "51030",
+        folderId: "5103",
+        projectId: project.id,
+        name: "CW-102-signed-acceptance.pdf",
+        category: "Acceptance",
+        etag: "v1",
+        valid: true,
+        analysis: "Previously verified acceptance.",
+      },
+    ]);
+    let preview = await previewReset();
+    assert.equal(preview.files.length, 0);
+    await applyReset(preview.fingerprint);
+    assert.equal(extractionCalls, 0);
+    assert.equal(
+      store.projects()[0].milestones.find((m) => m.id === "M3")!.accepted,
+      true,
+    );
+    assert.ok(peakReads > 1 && peakReads <= 4);
+    version = "v2";
+    preview = await previewReset();
+    await applyReset(preview.fingerprint);
+    assert.equal(extractionCalls, 1);
+    assert.equal(
+      store.projects()[0].milestones.find((m) => m.id === "M3")!.accepted,
+      false,
+      "changed unsigned source must block billing",
+    );
+  });
+});
+
+test("employee storage paths are absolute for the default and relative directory settings", () => {
+  const saved = process.env.EMPLOYEE_DATA_DIR;
+  const scope = {
+    employee: { id: "404", name: "Path test", email: "path@example.com" },
+    workspace: { id: "600", name: "Path test" },
+    mcp: {} as any,
+    traces: [],
+    assertActive: () => {},
+  };
+  try {
+    delete process.env.EMPLOYEE_DATA_DIR;
+    assert.equal(
+      employeeContext.run(scope, store.storageDir),
+      path.resolve("data/employees/404/600"),
+    );
+    process.env.EMPLOYEE_DATA_DIR = "./relative-employee-state";
+    assert.equal(
+      employeeContext.run(scope, store.storageDir),
+      path.resolve("relative-employee-state/404/600"),
+    );
+    process.env.EMPLOYEE_DATA_DIR = path.join(temporary, "absolute");
+    assert.equal(
+      employeeContext.run(scope, store.storageDir),
+      path.join(temporary, "absolute/404/600"),
+    );
+  } finally {
+    if (saved === undefined) delete process.env.EMPLOYEE_DATA_DIR;
+    else process.env.EMPLOYEE_DATA_DIR = saved;
+  }
 });

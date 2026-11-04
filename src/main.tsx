@@ -2005,8 +2005,11 @@ function App({
                     Preview non-baseline acceptance, billing and follow-up files
                     before archiving them and restoring this sample workspace.
                   </p>
+                  <a className="button secondary" href="#reset-clean">
+                    Quick reset after Box cleanup
+                  </a>
                   <a className="button secondary" href="#reset">
-                    Preview workspace reset
+                    Archive files & reset
                   </a>
                 </>
               )}
@@ -2468,8 +2471,14 @@ function Review({
                       disabled={readonly}
                       onChange={(e) => update("owner", e.target.value)}
                     >
-                      <option>Alex Chen</option>
-                      <option>Sam Rivera</option>
+                      {[
+                        ...new Set([
+                          ...state.projects.map((project) => project.owner),
+                          edit.owner,
+                        ]),
+                      ].map((owner) => (
+                        <option key={owner}>{owner}</option>
+                      ))}
                     </select>
                   </label>
                   <label>
@@ -2728,6 +2737,16 @@ function EmployeeApp() {
         }}
       />
     );
+  if (route === "#reset-clean")
+    return (
+      <ResetAfterCleanup
+        employee={session.employee}
+        workspace={session.workspace}
+        done={() => {
+          location.hash = "overview";
+        }}
+      />
+    );
   if (route === "#reset")
     return (
       <ResetWorkspace
@@ -2748,6 +2767,100 @@ function EmployeeApp() {
         setChoosing(true);
       }}
     />
+  );
+}
+function ResetAfterCleanup({
+  employee,
+  workspace,
+  done,
+}: {
+  employee: Identity;
+  workspace: Workspace;
+  done: () => void;
+}) {
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [complete, setComplete] = useState("");
+  useEffect(() => () => abortWorkspaceRequests(), []);
+  async function reset() {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api("/reset/after-cleanup", {
+        method: "POST",
+        ...json({ confirm: true }),
+      });
+      setComplete(result.message);
+      const channel = new BroadcastChannel("billready-session");
+      channel.postMessage({ kind: "changed", sender: browserInstanceId });
+      channel.close();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="entry-page">
+      <div className="entry-card folder-chooser">
+        <div className="eyebrow">CLEARWAVE AV / QUICK REHEARSAL RESET</div>
+        <h1>Already cleaned up Box?</h1>
+        <p>
+          <strong>{workspace.name}</strong> · {employee.email}
+        </p>
+        <p>
+          In Alder & Finch, remove or move the uploaded customer acceptance from{" "}
+          <strong>03 Acceptance</strong>, the generated invoice, packet and
+          email files from <strong>04 Billing</strong>, and any generated
+          follow-up from <strong>05 Follow-ups</strong>. Keep the original
+          agreements, completion report and README files.
+        </p>
+        <a
+          className="box-project-link"
+          href={"https://app.box.com/folder/" + workspace.id}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Open workspace in Box <ExternalLink size={14} />
+        </a>
+        <p>
+          This checks only the relevant project folders and resets local
+          rehearsal state. It does not change files in Box or call Box AI. Other
+          project amounts are preserved; workspace chats and drafts are cleared.
+        </p>
+        {busy && (
+          <p role="status">
+            Confirming Box cleanup and resetting Alder & Finch…
+          </p>
+        )}
+        {error && (
+          <p className="workspace-warning" role="alert">
+            {error}
+          </p>
+        )}
+        {complete && <p role="status">{complete}</p>}
+        <div className="folder-actions">
+          <button className="button secondary" disabled={busy} onClick={done}>
+            {complete ? "Return to workspace" : "Cancel"}
+          </button>
+          {!complete && (
+            <button
+              className="button primary"
+              disabled={busy}
+              onClick={() => void reset()}
+            >
+              Check Box & reset Alder & Finch
+            </button>
+          )}
+        </div>
+        {!complete && (
+          <p className="subtle">
+            Prefer to let the app move the files?{" "}
+            <a href="#reset">Use archive & reset</a>.
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 type ResetPreview = {

@@ -31,6 +31,14 @@ export type Project = {
   progress: number;
   milestones: Milestone[];
 };
+export const SAMPLE_PROJECT_OWNER = "Alex Chan";
+// Migrate the previous sample assignments without changing owners of custom projects.
+export function projectOwner(id: string, owner: string) {
+  return /^CW-10[1-5](?:~\d+)?$/.test(id) &&
+    ["Alex Chen", "Sam Rivera"].includes(owner)
+    ? SAMPLE_PROJECT_OWNER
+    : owner;
+}
 const m = (
   id: string,
   name: string,
@@ -60,7 +68,7 @@ export function seedProjects(): Project[] {
       shortName: "Alder & Finch",
       contact: "Morgan Ellis",
       email: "morgan.ellis@alderfinch.example",
-      owner: "Alex Chen",
+      owner: SAMPLE_PROJECT_OWNER,
       color: "#bd7955",
       progress: 100,
       milestones: [
@@ -76,7 +84,7 @@ export function seedProjects(): Project[] {
       shortName: "Marlow Hotel",
       contact: "Jamie Park",
       email: "jamie.park@marlow.example",
-      owner: "Sam Rivera",
+      owner: SAMPLE_PROJECT_OWNER,
       color: "#638887",
       progress: 100,
       milestones: [
@@ -92,7 +100,7 @@ export function seedProjects(): Project[] {
       shortName: "Westbridge University",
       contact: "Taylor Reed",
       email: "taylor.reed@westbridge.example",
-      owner: "Alex Chen",
+      owner: SAMPLE_PROJECT_OWNER,
       color: "#7c82a1",
       progress: 100,
       milestones: [
@@ -108,7 +116,7 @@ export function seedProjects(): Project[] {
       shortName: "Fieldstone Studio",
       contact: "Jordan Lane",
       email: "jordan.lane@fieldstone.example",
-      owner: "Sam Rivera",
+      owner: SAMPLE_PROJECT_OWNER,
       color: "#969368",
       progress: 40,
       milestones: [
@@ -124,7 +132,7 @@ export function seedProjects(): Project[] {
       shortName: "Northstar Health",
       contact: "Casey Brooks",
       email: "casey.brooks@northstar.example",
-      owner: "Alex Chen",
+      owner: SAMPLE_PROJECT_OWNER,
       color: "#87739b",
       progress: 100,
       milestones: [

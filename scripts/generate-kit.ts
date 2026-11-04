@@ -26,7 +26,7 @@ const dirs = [
 ];
 write(
   path.join(root, "Company", "company-profile.md"),
-  `# Clearwave AV\nFictional AV installation company. Owner: Avery Quinn. Billing: billing@clearwave.example.\nDemo date: ${DEMO_DATE}. Currency USD. All names, amounts, and signatures are synthetic.\nProject managers: Alex Chen and Sam Rivera.\n`,
+  `# Clearwave AV\nFictional AV installation company. Owner: Avery Quinn. Billing: billing@clearwave.example.\nDemo date: ${DEMO_DATE}. Currency USD. All names, amounts, and signatures are synthetic.\nProject owner: Alex Chan.\n`,
 );
 write(
   path.join(root, "Company", "billing-readiness-rules.md"),
@@ -158,7 +158,7 @@ for (const p of ps) {
     );
   write(
     path.join(dir, dirs[4], "README.md"),
-    `# ${p.id} follow-ups\n${p.id === "CW-101" ? `Alex Chen: request signed acceptance from ${p.contact}; due ${dateOffset(1)}. Owner review required before saving a new follow-up.` : p.id === "CW-104" ? `Sam Rivera: confirm equipment delivery; due ${dateOffset(2)}.` : "No pending customer request at initial state."}\n`,
+    `# ${p.id} follow-ups\n${p.id === "CW-101" ? `Alex Chan: request signed acceptance from ${p.contact}; due ${dateOffset(1)}. Owner review required before saving a new follow-up.` : p.id === "CW-104" ? `Alex Chan: confirm equipment delivery; due ${dateOffset(2)}.` : "No pending customer request at initial state."}\n`,
   );
   manifest.push({
     projectId: p.id,

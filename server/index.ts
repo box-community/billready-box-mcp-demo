@@ -117,6 +117,13 @@ app.post("/api/workspace", async (req, res) => {
   selectWorkspace(req, { id, name: info.name });
   res.json({ ok: true });
 });
+app.post("/api/reset/after-cleanup", async (req, res) => {
+  requireEmployee();
+  if (req.body.confirm !== true)
+    throw Error("Confirm that you cleaned up the rehearsal files in Box.");
+  const { resetAfterCleanup } = await import("./reset-after-cleanup.ts");
+  res.json(await serial(resetAfterCleanup));
+});
 app.use("/api", async (req, res, next) => {
   if (mode !== "live" || req.path === "/health") return next();
   const scope = requireEmployee();
@@ -126,11 +133,19 @@ app.use("/api", async (req, res, next) => {
       code: "workspace_required",
     });
   try {
-    await serial(async () => {
-      if (!get("initialized", false)) initialize([]);
-      await remote.verifyAccess();
-      if (!get("mappedRoot", "")) await discover();
-    });
+    if (!get("initialized", false)) initialize([]);
+    const requestedProject = req.path.match(
+      /^\/(?:projects|chat)\/([^/]+)/,
+    )?.[1];
+    await remote.verifyAccess(
+      requestedProject && requestedProject !== "overview"
+        ? decodeURIComponent(requestedProject)
+        : undefined,
+    );
+    if (!get("mappedRoot", ""))
+      await serial(async () => {
+        if (!get("mappedRoot", "")) await discover();
+      });
     const project = req.path.match(/^\/projects\/([^/]+)/)?.[1];
     const chatContext = req.path.match(/^\/chat\/([^/]+)/)?.[1];
     const context = decodeURIComponent(project || chatContext || "overview");

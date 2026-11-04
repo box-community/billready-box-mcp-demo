@@ -1,3 +1,4 @@
+import { projectOwner } from "./domain.ts";
 import { z } from "zod";
 export const projectRecordSchema = z
   .object({
@@ -46,7 +47,11 @@ export function projectRecord(raw: any): z.infer<typeof projectRecordSchema> {
     }
   }
   const parsed = projectRecordSchema.safeParse(raw);
-  if (parsed.success) return parsed.data;
+  if (parsed.success)
+    return {
+      ...parsed.data,
+      owner: projectOwner(parsed.data.id, parsed.data.owner),
+    };
   if (raw && typeof raw === "object")
     for (const value of Object.values(raw)) {
       try {

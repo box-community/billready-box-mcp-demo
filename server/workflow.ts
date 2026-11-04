@@ -25,6 +25,7 @@ import {
   DEMO_DATE,
   dateOffset,
   type Project,
+  projectOwner,
 } from "./domain.ts";
 import {
   analyze,
@@ -51,7 +52,16 @@ export type Proposal = {
   created: string;
   resolved?: boolean;
 };
-export const proposals = () => get<Proposal[]>("proposals", []);
+export function proposals() {
+  const stored = get<Proposal[]>("proposals", []);
+  const updated = stored.map((p) => ({
+    ...p,
+    owner: projectOwner(p.projectId, p.owner),
+  }));
+  if (stored.some((p, i) => p.owner !== updated[i].owner))
+    put("proposals", updated);
+  return updated;
+}
 export async function reassess(pid: string, docs: Doc[]) {
   let p = projects().find((x) => x.id === pid);
   if (!p) throw Error("Unknown project");

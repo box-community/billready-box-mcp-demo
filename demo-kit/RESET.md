@@ -1,5 +1,13 @@
 # Reset the rehearsal workspace
 
+## Fast reset after manual Box cleanup
+
+For repeated Alder & Finch rehearsals, remove or move the uploaded acceptance from `03 Acceptance`, all generated invoice/packet/email files from `04 Billing`, and generated follow-ups from `05 Follow-ups`. Keep the original records, completion report and README files.
+
+Open [Quick reset after Box cleanup](http://127.0.0.1:4310/#reset-clean) and choose **Check Box & reset Alder & Finch**. The page does no folder inventory on opening. The action checks the project’s membership in the selected workspace and its relevant folder contents, refuses incomplete cleanup, then clears workspace chats/drafts/checkpoints and restores Alder & Finch to $18,000 blocked. Other project amounts are retained. It makes no Box writes and no Box AI calls.
+
+You can also run `npm run reset -- --after-cleanup` to print this link. An existing synchronized workspace is required; this is not first-time project discovery. Cached dashboard reads no longer wait in the mutation queue and permission checks for visible projects run in bounded parallel batches. A newly selected workspace still needs initial discovery and evidence verification.
+
 ## Live Box mode
 
 Keep the application running, then run:
@@ -16,6 +24,8 @@ Alternatively, open **Connection & diagnostics → Preview workspace reset**.
 2. Review the workspace name, employee account and file list.
 3. Choose **Archive files & reset workspace**.
 4. After completion, return to the workspace. Alder & Finch should show **$0 ready / $18,000 blocked**, ready for the acceptance upload.
+
+Reset now uses two bounded inventories across preview and apply, with up to four folder reads in parallel. It does not rescan the full tree again during archiving or rebuilding. Previously verified acceptance is reused only when Box reports the same file revision; changed or unversioned acceptance is revalidated.
 
 The reset uses Box MCP to create a `BillReady Rehearsal Archive` batch, move listed files and verify each move. It archives non-baseline files in `03 Acceptance`, `04 Billing` and `05 Follow-ups`. Original sample documents are preserved by their project, folder and name. Project agreement/delivery source folders are not cleaned. Supported project identities and milestone amounts must match the supplied Clearwave sample records; arbitrary customer projects are refused.
 

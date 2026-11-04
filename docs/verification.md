@@ -1,6 +1,27 @@
 # Verification record
 
 
+## Invoice preview path regression — November 4, 2026
+
+- Fixed employee storage paths to resolve absolutely for both the default directory and relative overrides. The previous relative path reached Express `sendFile`, which requires an absolute path; tests previously masked this by using an absolute temporary directory.
+- The employee HTTP suite now runs with a relative storage override and checks successful PDF responses. A separate regression covers default, relative and absolute directory settings. **43 tests pass** and production build passes.
+- The PDF viewer now reads API error responses, displays the actual failure reason, supports retry and cancels abandoned fetches. Existing credentials and the physical workspace data location are unchanged.
+
+
+## Manual-cleanup quick reset — November 4, 2026
+
+- Added an authenticated endpoint before broad discovery middleware and a separate `#reset-clean` view that does not fetch inventory on mount. It checks the signed-in account’s selected workspace, verifies project ancestry, lists Alder & Finch’s relevant folders, refuses remaining rehearsal files and clears local state without moving/deleting Box files or using Box AI.
+- Cached reads now validate access outside the mutation queue; project requests check only their own project, and overview permission checks run in batches of up to four. Missing mappings still initialize through a guarded mutation queue.
+- **42 tests pass** and production build passes. Tests assert no Box writes, no AI extraction, four folder-list calls for the standard hero layout, rejection of leftover output files and anonymous calls, and that cached state reads complete while the mutation queue is deliberately held. Fixtures do not establish real-world reset timing.
+
+
+## Reset performance — November 4, 2026
+
+- Removed three redundant full-tree inventories from preview/apply, bounded folder reads at four in parallel, and reused the fresh inventory for archiving and local reconstruction. Each archive move still has read-back verification, followed by checks of affected source folders.
+- Stored Box file ETags allow reuse of acceptance validation only for an unchanged revision. Changed or unversioned remaining acceptance is revalidated; no reset marks unverified evidence accepted.
+- **41 automated tests pass**, including one inventory during apply, no extra AI extraction when removing proof, bounded parallel reads, unchanged revision reuse and changed unsigned acceptance remaining blocked. Production build passed. Timing and writes were verified with controlled fixtures; no live Box reset was applied for this optimization.
+
+
 ## Authenticated workspace reset — November 4, 2026
 
 - `npm run reset` in live mode exits successfully with the account-bound browser preview link; it does not read legacy credentials or archive files on its own. Local development retains the existing preview/`--apply` behavior.

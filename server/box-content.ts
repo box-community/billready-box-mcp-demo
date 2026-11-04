@@ -145,12 +145,25 @@ export class RemoteBox {
     const folders: { id: string; name: string; ancestors: string[] }[] = [];
     const warnings: string[] = [];
     let count = 0;
+    let activeReads = 0;
+    const waiters: (() => void)[] = [];
+    const inventoryList = async (id: string) => {
+      if (activeReads < 4) activeReads++;
+      else await new Promise<void>((resolve) => waiters.push(resolve));
+      try {
+        return await this.list(id);
+      } finally {
+        const next = waiters.shift();
+        if (next) next();
+        else activeReads--;
+      }
+    };
     const walk = async (id: string, ancestors: string[], names: string[]) => {
       if (++count > 150)
         throw Error("Workspace exceeds 150 folders. Select a smaller folder.");
       let entries: any[];
       try {
-        entries = await this.list(id);
+        entries = await inventoryList(id);
       } catch (e) {
         if (
           id !== root &&
@@ -161,39 +174,43 @@ export class RemoteBox {
         }
         throw e;
       }
-      for (const entry of entries) {
-        if (
-          entry.type === "folder" &&
-          entry.name !== ARCHIVE_NAME &&
-          !entry.name.startsWith(".")
-        ) {
-          folders.push({ id: String(entry.id), name: entry.name, ancestors });
-          await walk(
-            String(entry.id),
-            [...ancestors, String(entry.id)],
-            [...names, entry.name],
-          );
-        } else if (entry.type === "file" && !entry.name.startsWith(".")) {
-          files.push({
-            id: "box-" + entry.id,
-            boxId: String(entry.id),
-            folderId: id,
-            name: entry.name,
-            ancestors,
-            category: names.includes("03 Acceptance")
-              ? "Acceptance"
-              : names.includes("02 Delivery evidence")
-                ? "Delivery evidence"
-                : names.includes("04 Billing")
-                  ? "Billing"
-                  : names.includes("05 Follow-ups")
-                    ? "Follow-ups"
-                    : "Project records",
-          });
-        }
-      }
+      await Promise.all(
+        entries.map(async (entry) => {
+          if (
+            entry.type === "folder" &&
+            entry.name !== ARCHIVE_NAME &&
+            !entry.name.startsWith(".")
+          ) {
+            folders.push({ id: String(entry.id), name: entry.name, ancestors });
+            await walk(
+              String(entry.id),
+              [...ancestors, String(entry.id)],
+              [...names, entry.name],
+            );
+          } else if (entry.type === "file" && !entry.name.startsWith(".")) {
+            files.push({
+              id: "box-" + entry.id,
+              boxId: String(entry.id),
+              ...(entry.etag != null ? { etag: String(entry.etag) } : {}),
+              folderId: id,
+              name: entry.name,
+              ancestors,
+              category: names.includes("03 Acceptance")
+                ? "Acceptance"
+                : names.includes("02 Delivery evidence")
+                  ? "Delivery evidence"
+                  : names.includes("04 Billing")
+                    ? "Billing"
+                    : names.includes("05 Follow-ups")
+                      ? "Follow-ups"
+                      : "Project records",
+            });
+          }
+        }),
+      );
     };
     await walk(root, [root], []);
+    files.sort((a, b) => a.id.localeCompare(b.id));
     const mapped: Record<string, string> = {},
       discovered = [],
       seen = new Set<string>();
@@ -283,7 +300,10 @@ export class RemoteBox {
         folders.some((x) => x.id === f.folderId && x.name === "Company"),
     );
     const docs = visible.map(({ ancestors, ...d }) => d);
-    put("projects", discovered);
+    put(
+      "projects",
+      discovered.sort((a, b) => a.businessId.localeCompare(b.businessId)),
+    );
     put("mappedRoot", root);
     put("boxFolders", mapped);
     put("allowedFolders", [root, ...Object.values(mapped)]);
@@ -302,7 +322,7 @@ export class RemoteBox {
     );
     return docs;
   }
-  async verifyAccess() {
+  async verifyAccess(projectId?: string) {
     const scope = requireEmployee();
     if (!scope.workspace) return;
     try {
@@ -334,54 +354,58 @@ export class RemoteBox {
         { status: 403 },
       );
     }
-    for (const p of projects()) {
-      try {
-        await boxMcp.callBoxTool("get_folder_details", {
-          folder_id: p.folderId!,
-        });
-      } catch (e) {
-        if (!/403|404|forbidden|not.found|access.denied/i.test(String(e)))
-          throw e;
-        put(
-          "projects",
-          projects().filter((x) => x.id !== p.id),
-        );
-        put(
-          "documents",
-          get<Doc[]>("documents", []).filter((d) => d.projectId !== p.id),
-        );
-        put(
-          "proposals",
-          get<any[]>("proposals", []).filter((x) => x.projectId !== p.id),
-        );
-        const mappings = get<Record<string, string>>("boxFolders", {});
-        put(
-          "boxFolders",
-          Object.fromEntries(
-            Object.entries(mappings).filter(
-              ([key]) => !key.startsWith(p.id + "/"),
-            ),
-          ),
-        );
-        put(
-          "allowedFiles",
-          get<Doc[]>("documents", []).map((d) => d.boxId),
-        );
-        put("chat:" + p.id, []);
-        put("chat:overview", []);
-        put(
-          "activity",
-          get<any[]>("activity", []).filter((a) => a.projectId !== p.id),
-        );
-        scope.traces.length = 0;
-      }
-    }
+    const visible = projects().filter((p) => !projectId || p.id === projectId);
+    for (let i = 0; i < visible.length; i += 4)
+      await Promise.all(
+        visible.slice(i, i + 4).map(async (p) => {
+          try {
+            await boxMcp.callBoxTool("get_folder_details", {
+              folder_id: p.folderId!,
+            });
+          } catch (e) {
+            if (!/403|404|forbidden|not.found|access.denied/i.test(String(e)))
+              throw e;
+            put(
+              "projects",
+              projects().filter((x) => x.id !== p.id),
+            );
+            put(
+              "documents",
+              get<Doc[]>("documents", []).filter((d) => d.projectId !== p.id),
+            );
+            put(
+              "proposals",
+              get<any[]>("proposals", []).filter((x) => x.projectId !== p.id),
+            );
+            const mappings = get<Record<string, string>>("boxFolders", {});
+            put(
+              "boxFolders",
+              Object.fromEntries(
+                Object.entries(mappings).filter(
+                  ([key]) => !key.startsWith(p.id + "/"),
+                ),
+              ),
+            );
+            put(
+              "allowedFiles",
+              get<Doc[]>("documents", []).map((d) => d.boxId),
+            );
+            put("chat:" + p.id, []);
+            put("chat:overview", []);
+            put(
+              "activity",
+              get<any[]>("activity", []).filter((a) => a.projectId !== p.id),
+            );
+            scope.traces.length = 0;
+          }
+        }),
+      );
   }
-  async archiveOwned(owned: Doc[]) {
+  async archiveOwned(owned: Doc[], verifiedInventory?: Doc[]) {
     const root = workspaceRoot() || process.env.BOX_DEMO_ROOT_ID!;
     if (get("mappedRoot", "") !== root)
       throw Error("Refresh the configured root before reset");
-    const active = await this.discover();
+    const active = verifiedInventory ?? (await this.discover());
     const toMove = owned.filter(
       (d) => d.boxId && active.some((x) => x.boxId === d.boxId),
     );

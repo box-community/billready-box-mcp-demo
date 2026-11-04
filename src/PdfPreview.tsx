@@ -12,7 +12,8 @@ export function PdfPreview({ url }: { url: string }) {
   const [pdf, setPdf] = useState<PDFDocumentProxy>(),
     [error, setError] = useState(""),
     [zoom, setZoom] = useState(1),
-    [page, setPage] = useState(1);
+    [page, setPage] = useState(1),
+    [attempt, setAttempt] = useState(0);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const viewport = useRef<HTMLDivElement>(null),
     canvas = useRef<HTMLCanvasElement>(null);
@@ -22,19 +23,45 @@ export function PdfPreview({ url }: { url: string }) {
     setError("");
     setPage(1);
     setZoom(1);
-    const task = getDocument({ url });
-    task.promise
-      .then((doc) => {
-        if (alive) setPdf(doc);
-      })
-      .catch((e) => {
-        if (alive) setError(e.message);
-      });
+    const controller = new AbortController();
+    let task: ReturnType<typeof getDocument> | undefined;
+    async function load() {
+      try {
+        const response = await fetch(url, {
+          signal: controller.signal,
+          credentials: "same-origin",
+        });
+        if (!response.ok) {
+          let message = `Invoice request failed (${response.status}).`;
+          try {
+            const body = await response.json();
+            if (typeof body.error === "string") message = body.error;
+          } catch {}
+          if (response.status === 401)
+            message =
+              "Your session expired. Sign in with Box again, then reopen this invoice.";
+          throw Error(message);
+        }
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-")
+          throw Error(
+            "The server did not return a readable PDF. Retry the preview.",
+          );
+        if (!alive) return;
+        task = getDocument({ data: bytes });
+        const document = await task.promise;
+        if (alive) setPdf(document);
+      } catch (e) {
+        if (alive && !controller.signal.aborted) setError((e as Error).message);
+      }
+    }
+    void load();
     return () => {
       alive = false;
-      void task.destroy();
+      controller.abort();
+      void task?.destroy();
     };
-  }, [url]);
+  }, [url, attempt]);
   useEffect(() => {
     const el = viewport.current;
     if (!el) return;
@@ -129,12 +156,19 @@ export function PdfPreview({ url }: { url: string }) {
       </div>
       <div className="pdf-page-viewport" ref={viewport}>
         {error ? (
-          <p>
-            Preview unavailable.{" "}
+          <div className="pdf-preview-error" role="alert">
+            <b>Couldn’t load the invoice preview</b>
+            <p>{error}</p>
+            <button
+              className="button secondary small"
+              onClick={() => setAttempt((n) => n + 1)}
+            >
+              Retry preview
+            </button>
             <a href={url} target="_blank" rel="noreferrer">
-              Open document
+              Open document ↗
             </a>
-          </p>
+          </div>
         ) : (
           <>
             {!pdf && <p>Loading invoice…</p>}
