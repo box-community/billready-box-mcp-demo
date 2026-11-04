@@ -1,3 +1,4 @@
+import { currentEmployee } from "./context.ts";
 import Ajv, { type ValidateFunction } from "ajv";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -7,6 +8,7 @@ import { traceCall, sanitizeTrace } from "./tracing.ts";
 
 // One reusable connection to Box's hosted server. No local MCP server or REST fallback.
 export class BoxMcpClient {
+  constructor(private tokenProvider = boxToken) {}
   client?: Client;
   tools: Tool[] = [];
   private connecting?: Promise<void>;
@@ -22,7 +24,7 @@ export class BoxMcpClient {
   }
 
   private async open() {
-    if (!hasBoxAuth())
+    if (this.tokenProvider === boxToken && !hasBoxAuth())
       throw Error(
         "Authorize Box through /auth/box/start first, or configure BOX_MCP_TOKEN.",
       );
@@ -43,7 +45,10 @@ export class BoxMcpClient {
           fetch: async (url, init) => {
             const headers = new Headers(init?.headers);
             // Read/refresh the token for every request, not just at connection time.
-            headers.set("Authorization", `Bearer ${await boxToken()}`);
+            headers.set(
+              "Authorization",
+              `Bearer ${await this.tokenProvider()}`,
+            );
             return fetch(url, { ...init, headers });
           },
         }),
@@ -112,4 +117,13 @@ function unpackToolResult(result: any): any {
     return texts[0];
   }
 }
-export const boxMcp = new BoxMcpClient();
+const legacyClient = new BoxMcpClient();
+export const boxMcp = new Proxy(legacyClient, {
+  get(_target, key) {
+    const scope = currentEmployee();
+    scope?.assertActive();
+    const client = scope?.mcp || legacyClient;
+    const value = Reflect.get(client, key);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});

@@ -94,7 +94,7 @@ export async function invoicePdf(
   return makePdf(
     file,
     "Draft invoice",
-    `${reference}  |  ${p.id}`,
+    `${reference}  |  ${p.businessId || p.id}`,
     [
       {
         title: "From / Bill to",
@@ -109,7 +109,7 @@ export async function invoicePdf(
         text: ms
           .map(
             (m) =>
-              `${p.id}-${m.id}  |  ${m.name}\nQuantity 1   x   ${money(m.cents)}   =   ${money(m.cents)}`,
+              `${p.businessId || p.id}-${m.id}  |  ${m.name}\nQuantity 1   x   ${money(m.cents)}   =   ${money(m.cents)}`,
           )
           .join("\n\n"),
       },

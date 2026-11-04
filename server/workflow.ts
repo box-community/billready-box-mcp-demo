@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { remote } from "./box-content.ts";
+import { currentEmployee } from "./context.ts";
 import { isCustomerDocument } from "../shared/customer-documents.ts";
 import { PDFDocument as PDFBinder } from "pdf-lib";
 import fs from "node:fs";
@@ -11,7 +14,7 @@ import {
   documents,
   addDoc,
   activity,
-  dataDir,
+  storageDir,
   type Doc,
 } from "./store.ts";
 import {
@@ -189,14 +192,14 @@ export function propose(p: Project, type: "billing" | "followup"): Proposal {
         : `Acceptance requested - ${p.name}`,
     body:
       type === "billing"
-        ? `Hi ${p.contact.split(" ")[0]},\n\nPlease find the draft invoice for ${money(amount)} and the supporting completion and acceptance evidence for ${p.name}. Payment terms will be Net 30 from issue.\n\nPlease review the attached billing package.\n\nThank you,\nAvery Quinn\nClearwave AV`
-        : `Hi ${p.contact.split(" ")[0]},\n\nInstallation and commissioning for ${p.name} are complete. Could you review the attached completion report and return signed acceptance for the final milestone? This will allow us to prepare the ${money(amount)} billing package.\n\nThank you,\nAvery Quinn\nClearwave AV`,
+        ? `Hi ${p.contact.split(" ")[0]},\n\nPlease find the draft invoice for ${money(amount)} and the supporting completion and acceptance evidence for ${p.name}. Payment terms will be Net 30 from issue.\n\nPlease review the attached billing package.\n\nThank you,\n${currentEmployee()?.employee.name || "Avery Quinn"}\nClearwave AV`
+        : `Hi ${p.contact.split(" ")[0]},\n\nInstallation and commissioning for ${p.name} are complete. Could you review the attached completion report and return signed acceptance for the final milestone? This will allow us to prepare the ${money(amount)} billing package.\n\nThank you,\n${currentEmployee()?.employee.name || "Avery Quinn"}\nClearwave AV`,
     owner: p.owner,
     due: dateOffset(1),
     attachments,
     status: "review",
     savedIds: [],
-    reference: `DRAFT-${p.id}-${ids.join("-")}`,
+    reference: `DRAFT-${p.businessId || p.id}-${ids.join("-")}`,
     created: DEMO_DATE,
   };
   put("proposals", [...proposals(), draft]);
@@ -239,7 +242,7 @@ export const editSchema = z.object({
   to: z.string().email(),
   subject: z.string().min(1).max(200),
   body: z.string().min(1).max(15000),
-  owner: z.enum(["Alex Chen", "Sam Rivera"]),
+  owner: z.string().min(1).max(200),
   due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   attachments: z.array(z.string()),
 });
@@ -271,7 +274,7 @@ export function editProposal(id: string, input: unknown) {
     throw Error(
       "Rejected evidence cannot be included as a billing attachment.",
     );
-  if (!edits.to.endsWith(".example"))
+  if (mode !== "live" && !edits.to.endsWith(".example"))
     throw Error("Demo recipients must use a reserved .example domain");
   const next = { ...existing, ...edits };
   put(
@@ -283,15 +286,75 @@ export function editProposal(id: string, input: unknown) {
 export async function previewInvoice(proposal: Proposal) {
   const p = projects().find((x) => x.id === proposal.projectId)!;
   const ms = assertBillable(p, proposal.milestoneIds);
-  const f = path.join(dataDir, "previews", proposal.id + ".pdf");
+  const f = path.join(storageDir(), "previews", proposal.id + ".pdf");
   await invoicePdf(f, p, ms, proposal.reference);
   return f;
 }
+const approvalQueues = new Map<string, Promise<unknown>>();
 export async function approve(id: string) {
+  const proposal = proposals().find((p) => p.id === id);
+  if (!proposal) throw Error("Proposal not found");
+  const p = projects().find((p) => p.id === proposal.projectId);
+  const key =
+    (p?.folderId || proposal.projectId) + "/" + proposal.milestoneIds.join("-");
+  const prior = approvalQueues.get(key) || Promise.resolve();
+  const run = prior.catch(() => {}).then(() => approveUnlocked(id));
+  approvalQueues.set(key, run);
+  try {
+    return await run;
+  } finally {
+    if (approvalQueues.get(key) === run) approvalQueues.delete(key);
+  }
+}
+async function approveUnlocked(id: string) {
   let proposal = proposals().find((x) => x.id === id);
   if (!proposal) throw Error("Proposal not found");
   if (proposal.status === "prepared") return proposal;
   const p = projects().find((x) => x.id === proposal!.projectId)!;
+  // Shared receipts coordinate employees saving the same Box project/milestones.
+  const receiptPath =
+    currentEmployee() && p.folderId
+      ? path.resolve(
+          process.env.EMPLOYEE_DATA_DIR || "data/employees",
+          "_receipts",
+          createHash("sha256")
+            .update(
+              p.folderId +
+                "/" +
+                proposal.type +
+                "/" +
+                [...proposal.milestoneIds].sort().join("-"),
+            )
+            .digest("hex") + ".json",
+        )
+      : undefined;
+  if (receiptPath && fs.existsSync(receiptPath)) {
+    const receipt: { proposal: Proposal; docs: Doc[] } = JSON.parse(
+      fs.readFileSync(receiptPath, "utf8"),
+    );
+    const destinations = [...new Set(receipt.docs.map((d) => d.folderId!))];
+    const visible = new Set<string>();
+    for (const folder of destinations)
+      for (const item of await remote.list(folder))
+        visible.add(String(item.id));
+    if (!receipt.docs.every((d) => d.boxId && visible.has(d.boxId)))
+      throw Error(
+        "Previously saved package is unavailable. Refresh and review it before retrying.",
+      );
+    for (const d of receipt.docs) addDoc(d);
+    put("allowedFiles", [
+      ...new Set([
+        ...get<string[]>("allowedFiles", []),
+        ...receipt.docs.map((d) => d.boxId!),
+      ]),
+    ]);
+    const prepared = { ...receipt.proposal, id: proposal.id, projectId: p.id };
+    put(
+      "proposals",
+      proposals().map((x) => (x.id === id ? prepared : x)),
+    );
+    return prepared;
+  }
   const saved: Doc[] = [];
   // Each remote artifact has a deterministic name and a persisted per-file checkpoint.
   const save = async (name: string, bytes: Buffer, folder = "04 Billing") => {
@@ -336,7 +399,7 @@ export async function approve(id: string) {
     const f = await previewInvoice(proposal);
     const invoice = await save(proposal.reference + ".pdf", fs.readFileSync(f));
     const packetPath = path.join(
-      dataDir,
+      storageDir(),
       "previews",
       proposal.id + "-packet.pdf",
     );
@@ -364,7 +427,7 @@ export async function approve(id: string) {
         },
         {
           title: "Review record",
-          text: `Approved by demo owner on ${DEMO_DATE}. Zero tax assumed. Net 30 from issue.`,
+          text: `Approved by ${currentEmployee()?.employee.name || "workspace owner"} on ${DEMO_DATE}. Zero tax assumed. Net 30 from issue.`,
         },
       ],
     );
@@ -458,6 +521,15 @@ export async function approve(id: string) {
     "proposals",
     proposals().map((x) => (x.id === id ? proposal! : x)),
   );
+  if (receiptPath) {
+    fs.mkdirSync(path.dirname(receiptPath), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(
+      receiptPath + ".tmp",
+      JSON.stringify({ proposal, docs: saved }),
+      { mode: 0o600 },
+    );
+    fs.renameSync(receiptPath + ".tmp", receiptPath);
+  }
   activity(
     proposal.type === "billing"
       ? "Billing package prepared. Draft saved; invoice not issued."

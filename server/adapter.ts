@@ -1,3 +1,4 @@
+import { currentEmployee } from "./context.ts";
 import { boxMcp } from "./box-mcp.ts";
 import { remote, safeTransferUrl, transferInfo } from "./box-content.ts";
 export { remote, safeTransferUrl, ARCHIVE_NAME } from "./box-content.ts";
@@ -5,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { get, put, documents, addDoc, dataDir, type Doc } from "./store.ts";
+import { get, put, documents, addDoc, storageDir, type Doc } from "./store.ts";
 import { acceptanceSchema, type Acceptance } from "./domain.ts";
 import { log, traceCall } from "./tracing.ts";
 
@@ -146,7 +147,7 @@ export async function persistFile(
   folder = "04 Billing",
 ): Promise<Doc> {
   if (mode === "live") return remote.persist(bytes, name, pid, folder);
-  const dir = path.join(dataDir, "content", pid, folder);
+  const dir = path.join(storageDir(), "content", pid, folder);
   fs.mkdirSync(dir, { recursive: true });
   const f = path.join(dir, name);
   if (!fs.existsSync(f)) fs.writeFileSync(f, bytes);
@@ -180,7 +181,7 @@ export async function refreshDocuments() {
     return merged;
   }
   const known = documents();
-  const extra = path.join(dataDir, "external-inbox");
+  const extra = path.join(storageDir(), "external-inbox");
   fs.mkdirSync(extra, { recursive: true });
   for (const e of fs.readdirSync(extra, { withFileTypes: true })) {
     if (e.isDirectory() && /^CW-10[1-5]$/.test(e.name)) {
@@ -209,7 +210,7 @@ export async function refreshDocuments() {
   return documents();
 }
 export async function previewBytes(d: Doc) {
-  if (mode !== "live" || d.path) return fs.readFileSync(d.path!);
+  if (mode !== "live") return fs.readFileSync(d.path!);
   if (!d.boxId || !get<string[]>("allowedFiles", []).includes(d.boxId))
     throw Error("File outside demo root");
   const r = await boxMcp.callBoxTool("get_download_url", { file_id: d.boxId });

@@ -19,6 +19,8 @@ export type Milestone = {
 };
 export type Project = {
   id: string;
+  businessId?: string;
+  folderId?: string;
   client: string;
   name: string;
   shortName: string;
@@ -205,7 +207,7 @@ export function validateAcceptance(a: Acceptance, p: Project, m: Milestone) {
   if (!result.success)
     return "Document could not be understood. Manual review required.";
   if (
-    a.projectId !== p.id ||
+    a.projectId !== (p.businessId || p.id) ||
     a.client.toLowerCase() !== p.client.toLowerCase() ||
     a.milestoneId !== m.id
   )

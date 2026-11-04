@@ -1,6 +1,12 @@
 import { withTrace, sanitizeTrace } from "./tracing.ts";
 import "dotenv/config";
-import { authRoutes, hasBoxAuth } from "./auth.ts";
+import { currentEmployee, requireEmployee } from "./context.ts";
+import {
+  authRoutes,
+  hasBoxAuth,
+  employeeMiddleware,
+  selectWorkspace,
+} from "./auth.ts";
 import express from "express";
 import multer from "multer";
 import fs from "node:fs";
@@ -48,11 +54,12 @@ if (!["live", "development"].includes(mode))
   throw Error("BILLREADY_ADAPTER must be development or live");
 if (!fs.existsSync("demo-kit/configuration/seed-manifest.json"))
   throw Error("Run npm run kit before starting.");
-initialize(mode === "development" ? localSeedDocs() : documents());
-const app = express();
+if (mode === "development") initialize(localSeedDocs());
+export const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 authRoutes(app);
+app.use("/api", employeeMiddleware);
 app.use("/api", (req, res, next) => {
   const origin = req.headers.origin;
   if (origin && new URL(origin).host !== req.headers.host)
@@ -62,10 +69,102 @@ app.use("/api", (req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
   next();
 });
+app.get("/api/folders", async (req, res) => {
+  requireEmployee();
+  const folder = z
+    .string()
+    .regex(/^\d+$/)
+    .parse(req.query.folderId || "0");
+  const offset = z.coerce
+    .number()
+    .int()
+    .min(0)
+    .parse(req.query.offset || 0);
+  const r: any = await (
+    await import("./box-mcp.ts")
+  ).boxMcp.callBoxTool("list_folder_content_by_folder_id", {
+    folder_id: folder,
+    limit: 100,
+    offset,
+  });
+  const data = r.entries ? r : r.result?.entries ? r.result : r.data;
+  if (!Array.isArray(data?.entries))
+    throw Error("Unsupported Box folder response.");
+  if (!data.entries.length && offset < (data.total_count ?? offset))
+    throw Error("Incomplete folder listing.");
+  res.json({
+    entries: data.entries
+      .filter((e: any) => e.type === "folder")
+      .map((e: any) => ({ id: String(e.id), name: e.name })),
+    nextOffset:
+      offset + data.entries.length < (data.total_count ?? Infinity) &&
+      data.entries.length
+        ? offset + data.entries.length
+        : null,
+  });
+});
+app.post("/api/workspace", async (req, res) => {
+  requireEmployee();
+  const id = z
+    .string()
+    .regex(/^[1-9]\d*$/)
+    .parse(req.body.folderId);
+  const info: any = await (
+    await import("./box-mcp.ts")
+  ).boxMcp.callBoxTool("get_folder_details", { folder_id: id });
+  if (String(info.id) !== id || typeof info.name !== "string")
+    throw Error("Unsupported Box folder details.");
+  selectWorkspace(req, { id, name: info.name });
+  res.json({ ok: true });
+});
+app.use("/api", async (req, res, next) => {
+  if (mode !== "live" || req.path === "/health") return next();
+  const scope = requireEmployee();
+  if (!scope.workspace)
+    return res.status(409).json({
+      error: "Choose a workspace folder first.",
+      code: "workspace_required",
+    });
+  try {
+    await serial(async () => {
+      if (!get("initialized", false)) initialize([]);
+      await remote.verifyAccess();
+      if (!get("mappedRoot", "")) await discover();
+    });
+    const project = req.path.match(/^\/projects\/([^/]+)/)?.[1];
+    const chatContext = req.path.match(/^\/chat\/([^/]+)/)?.[1];
+    const context = decodeURIComponent(project || chatContext || "overview");
+    if (context !== "overview" && !projects().some((p) => p.id === context))
+      return res
+        .status(404)
+        .json({ error: "Project not found in your workspace." });
+    scope.assertActive();
+    next();
+  } catch (e) {
+    next(e);
+  }
+});
+app.post("/api/reset/preview", async (_req, res) => {
+  const { previewReset } = await import("./reset-workspace.ts");
+  res.json(await serial(previewReset));
+});
+app.post("/api/reset/apply", async (req, res) => {
+  const fingerprint = z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .parse(req.body.fingerprint);
+  if (req.body.confirm !== true)
+    throw Error("Confirm the reviewed reset before applying.");
+  const { applyReset } = await import("./reset-workspace.ts");
+  res.json(await serial(() => applyReset(fingerprint)));
+});
 app.get("/api/state", (_req, res) => {
   const ps = projects();
   res.json({
     mode,
+    employee: currentEmployee()?.employee || null,
+    workspace: currentEmployee()?.workspace || null,
+    discovery: get("discovery", { status: "ready", warnings: [] }),
     demoDate: DEMO_DATE,
     projects: ps.map((p) => ({ ...p, billing: billing(p) })),
     totals: totals(ps),
@@ -75,7 +174,7 @@ app.get("/api/state", (_req, res) => {
     folders: mode === "live" ? get("boxFolders", {}) : {},
     connection: {
       box: hasBoxAuth(),
-      root: !!process.env.BOX_DEMO_ROOT_ID,
+      root: !!currentEmployee()?.workspace,
       model:
         (process.env.AGENT_PROVIDER || "box") === "box"
           ? hasBoxAuth()
@@ -109,19 +208,28 @@ async function streamWorkflow(
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
   const send = (event: string, data: unknown) => {
+    currentEmployee()?.assertActive();
     if (!res.destroyed && !res.writableEnded)
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
   const heartbeat = setInterval(() => {
-    if (!res.destroyed) res.write(": keepalive\n\n");
-  }, 15000);
+    try {
+      currentEmployee()?.assertActive();
+      if (!res.destroyed) res.write(": keepalive\n\n");
+    } catch {
+      res.end();
+    }
+  }, 1000);
   try {
     send(
       "reply",
       await serial(() => withTrace((entry) => send("tool", entry), run)),
     );
   } catch (error) {
-    send("failure", { error: String(sanitizeTrace((error as Error).message)) });
+    if (!res.writableEnded)
+      res.write(
+        `event: failure\ndata: ${JSON.stringify({ error: String(sanitizeTrace((error as Error).message)) })}\n\n`,
+      );
   } finally {
     clearInterval(heartbeat);
     res.end();
@@ -154,7 +262,7 @@ async function uploadAcceptance(
       valid: true,
       message: "Acceptance already verified. No duplicate upload.",
     };
-  const name = `${p.id}-acceptance-${digest.slice(0, 12)}.pdf`;
+  const name = `${p.businessId || p.id}-acceptance-${digest.slice(0, 12)}.pdf`;
   let d = prev || {
     ...(await persistFile(file.buffer, name, p.id, "03 Acceptance")),
     hash: digest,
@@ -225,9 +333,17 @@ app.post("/api/projects/:pid/acceptance/:docId/check", async (req, res) =>
     }),
   ),
 );
-app.post("/api/refresh", async (req, res) =>
-  res.json(await serial(() => discover(req.body.projectId))),
-);
+app.post("/api/refresh", async (req, res) => {
+  const pid = req.body.projectId;
+  if (
+    pid !== undefined &&
+    (typeof pid !== "string" || !projects().some((p) => p.id === pid))
+  )
+    return res
+      .status(404)
+      .json({ error: "Project not found in your workspace." });
+  res.json(await serial(() => discover(pid)));
+});
 app.get("/api/documents/:id/content", async (req, res) => {
   const d = documents().find((x) => x.id === req.params.id);
   if (!d) throw Error("Document not found");
@@ -290,11 +406,11 @@ app.use(
         ? err.issues.map((x) => x.message).join("; ")
         : err.message || "Unexpected error";
     res
-      .status(err.code === "LIMIT_FILE_SIZE" ? 413 : 400)
+      .status(err.code === "LIMIT_FILE_SIZE" ? 413 : err.status || 400)
       .json({ error: message });
   },
 );
 const port = Number(process.env.PORT || 4310);
-app.listen(port, "127.0.0.1", () =>
+export const server = app.listen(port, "127.0.0.1", () =>
   console.log(`BillReady: http://127.0.0.1:${port} (${mode} adapter)`),
 );

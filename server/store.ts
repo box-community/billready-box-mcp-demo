@@ -1,3 +1,4 @@
+import { currentEmployee } from "./context.ts";
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
@@ -6,22 +7,67 @@ export const dataDir = path.resolve(
   process.env.DATA_DIR ||
     "data/" + (process.env.BILLREADY_ADAPTER || "development"),
 );
-fs.mkdirSync(dataDir, { recursive: true });
-const db = new DatabaseSync(path.join(dataDir, "billready.sqlite"));
-db.exec(
-  "PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
-);
+export function storageDir() {
+  const scope = currentEmployee();
+  if (!scope) return dataDir;
+  scope.assertActive();
+  if (!scope.workspace) throw Error("Choose a workspace folder first.");
+  return path.join(
+    process.env.EMPLOYEE_DATA_DIR || "data/employees",
+    scope.employee.id,
+    scope.workspace.id,
+  );
+}
+const databases = new Map<string, DatabaseSync>();
+
+function database() {
+  const dir = storageDir();
+  let db = databases.get(dir);
+  if (!db) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    db = new DatabaseSync(path.join(dir, "billready.sqlite"));
+    db.exec(
+      "PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    );
+    databases.set(dir, db);
+  }
+  const scope = currentEmployee();
+  if (scope?.workspace) {
+    const marker = path.resolve(
+      process.env.EMPLOYEE_DATA_DIR || "data/employees",
+      "_reset-epochs",
+      scope.workspace.id,
+    );
+    const epoch = fs.existsSync(marker) ? fs.readFileSync(marker, "utf8") : "";
+    const recorded = db
+      .prepare("SELECT value FROM kv WHERE key='resetEpoch'")
+      .get() as { value: string } | undefined;
+    if ((recorded ? JSON.parse(recorded.value) : "") !== epoch) {
+      db.exec("DELETE FROM kv");
+      scope.traces.length = 0;
+      db.prepare("INSERT INTO kv(key,value) VALUES('resetEpoch',?)").run(
+        JSON.stringify(epoch),
+      );
+      for (const folder of ["previews", "content", "external-inbox"])
+        fs.rmSync(path.join(dir, folder), { recursive: true, force: true });
+    }
+  }
+  return db;
+}
 export function get<T>(key: string, fallback: T): T {
-  const r = db.prepare("SELECT value FROM kv WHERE key=?").get(key) as
+  const r = database().prepare("SELECT value FROM kv WHERE key=?").get(key) as
     { value: string } | undefined;
   return r ? JSON.parse(r.value) : fallback;
 }
 export function put(key: string, value: unknown) {
-  db.prepare(
-    "INSERT INTO kv(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-  ).run(key, JSON.stringify(value));
+  database()
+    .prepare(
+      "INSERT INTO kv(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+    )
+    .run(key, JSON.stringify(value));
 }
-export const projects = () => get<Project[]>("projects", seedProjects());
+export const projects = () =>
+  get<Project[]>("projects", currentEmployee() ? [] : seedProjects());
 export function updateProject(p: Project) {
   put(
     "projects",
@@ -63,23 +109,27 @@ export function activity(text: string, projectId?: string) {
 }
 export function initialize(docs: Doc[]) {
   if (!get("initialized", false)) {
-    put("projects", seedProjects());
+    put("projects", currentEmployee() ? [] : seedProjects());
     put("documents", docs);
     put("initialized", true);
-    activity("Five projects synced. Billing readiness checked.");
+    activity(
+      currentEmployee()
+        ? "Workspace connected."
+        : "Five projects synced. Billing readiness checked.",
+    );
   }
 }
 export function resetStore() {
-  db.exec("DELETE FROM kv");
+  database().exec("DELETE FROM kv");
 }
 export function transaction<T>(fn: () => T): T {
-  db.exec("BEGIN IMMEDIATE");
+  database().exec("BEGIN IMMEDIATE");
   try {
     const r = fn();
-    db.exec("COMMIT");
+    database().exec("COMMIT");
     return r;
   } catch (e) {
-    db.exec("ROLLBACK");
+    database().exec("ROLLBACK");
     throw e;
   }
 }

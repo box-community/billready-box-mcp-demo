@@ -1,3 +1,9 @@
+let requests = new AbortController();
+export const workspaceSignal = () => requests.signal;
+export function abortWorkspaceRequests() {
+  requests.abort();
+  requests = new AbortController();
+}
 import type { Trace } from "../server/tracing.ts";
 
 // Shared SSE reader for chat and proof upload. Payloads are sanitized by the server.
@@ -6,7 +12,10 @@ export async function streamRequest<T>(
   init: RequestInit,
   onTool: (entry: Trace) => void,
 ): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await fetch(url, {
+    ...init,
+    signal: init.signal || workspaceSignal(),
+  });
   if (!response.ok || !response.body)
     throw Error("Could not start the workflow. Please try again.");
   const reader = response.body.getReader(),

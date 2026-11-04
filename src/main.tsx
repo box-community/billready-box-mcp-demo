@@ -1,5 +1,9 @@
 import { ToolActivity } from "./ToolActivity";
-import { streamRequest } from "./stream-request";
+import {
+  streamRequest,
+  workspaceSignal,
+  abortWorkspaceRequests,
+} from "./stream-request";
 import {
   isCustomerDocument,
   documentLabel,
@@ -71,6 +75,8 @@ type B = {
 };
 type Project = {
   id: string;
+  businessId?: string;
+  folderId?: string;
   client: string;
   name: string;
   shortName: string;
@@ -118,6 +124,7 @@ type Message = {
 };
 type State = {
   mode: string;
+  discovery?: { status: string; warnings: string[] };
   demoDate: string;
   projects: Project[];
   totals: B;
@@ -140,7 +147,10 @@ const date = (s: string) =>
     day: "numeric",
   });
 async function api(path: string, options?: RequestInit) {
-  const r = await fetch("/api" + path, options);
+  const r = await fetch("/api" + path, {
+    ...options,
+    signal: workspaceSignal(),
+  });
   if (!r.ok) {
     const x = await r.json().catch(() => ({ error: r.statusText }));
     throw Error(x.error);
@@ -151,7 +161,17 @@ const json = (data: unknown) => ({
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(data),
 });
-function App() {
+type Identity = { id: string; name: string; email: string };
+type Workspace = { id: string; name: string };
+function App({
+  employee,
+  workspace,
+  changeWorkspace,
+}: {
+  employee?: Identity;
+  workspace?: Workspace;
+  changeWorkspace: () => void;
+}) {
   const [state, setState] = useState<State>();
   const [view, setView] = useState(location.hash.slice(1) || "overview");
   const [conversation, setConversation] = useState<Message[]>([]);
@@ -197,7 +217,16 @@ function App() {
   activeContext.current = context;
   async function load() {
     try {
-      setState(await api("/state"));
+      const next = await api("/state");
+      setState(next);
+      const selected = location.hash.slice(1);
+      if (
+        selected &&
+        selected !== "overview" &&
+        selected !== "projects" &&
+        !next.projects.some((p: Project) => p.id === selected)
+      )
+        navigate("overview");
       setError("");
     } catch (e) {
       setError((e as Error).message);
@@ -228,7 +257,8 @@ function App() {
     };
   }, [context]);
   useEffect(() => {
-    chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    if (conversation.length || busy)
+      chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [conversation, busy]);
   useEffect(() => {
     if (busy && followActivity.current)
@@ -423,14 +453,30 @@ function App() {
   if (!state)
     return (
       <div className="loading">
-        <div className="brand-mark">
-          b<span>✓</span>
-        </div>
-        <h2>Getting your business ready.</h2>
+        <Building2 size={32} />
+        <h2>Loading your billing workspace.</h2>
+        {!error && (
+          <p>Reading your Box workspace and checking project evidence…</p>
+        )}
         {error ? (
           <>
             <p>{error}</p>
-            <button onClick={load}>Try again</button>
+            <button className="button secondary" onClick={load}>
+              Try again
+            </button>
+            {employee && (
+              <button className="button secondary" onClick={changeWorkspace}>
+                Change workspace folder
+              </button>
+            )}
+            {employee && (
+              <button
+                className="button secondary"
+                onClick={() => void signOut()}
+              >
+                Sign out
+              </button>
+            )}
           </>
         ) : (
           <LoaderCircle className="spin" />
@@ -486,22 +532,16 @@ function App() {
           href="#overview"
           onClick={() => navigate("overview")}
         >
-          <div className="brand-mark">
-            b<span>✓</span>
-          </div>
-          <strong>
-            BillReady<span className="brand-dot">.</span>
-          </strong>
+          <strong>Clearwave AV</strong>
         </a>
         <div className="workspace">
           <div className="company-icon">
             <Activity size={18} />
           </div>
           <div>
-            <b>Clearwave AV</b>
-            <span>Business workspace</span>
+            <b>BillReady</b>
+            <span>Internal billing workspace</span>
           </div>
-          <ChevronDown size={14} />
         </div>
         <div className="nav-label">WORKSPACE</div>
         <button
@@ -516,10 +556,11 @@ function App() {
           onClick={() => navigate("projects")}
         >
           <FolderKanban size={18} />
-          All projects<span className="nav-count">5</span>
+          Workspace projects
+          <span className="nav-count">{state.projects.length}</span>
         </button>
         <div className="nav-label project-label">
-          YOUR PROJECTS <span>5</span>
+          WORKSPACE PROJECTS <span>{state.projects.length}</span>
         </div>
         {state.projects.map((p) => (
           <button
@@ -537,25 +578,47 @@ function App() {
         <div className="sidebar-bottom">
           <div className="quiet-card">
             <ShieldCheck size={20} />
-            <b>Your next invoice starts here.</b>
-            <span>Clear evidence. Confident billing.</span>
+            <b>{employee ? "Connected to Box" : "Local development"}</b>
+            <span>{workspace?.name || "Sample project workspace"}</span>
+            {employee && (
+              <button onClick={changeWorkspace}>Change workspace folder</button>
+            )}
           </div>
           <button
             className="presenter-toggle"
             onClick={() => setPresenter(!presenter)}
           >
             <Settings2 size={15} />
-            Presenter controls
+            Connection & diagnostics
             <ChevronRight size={14} />
           </button>
           <div className="profile">
-            <div className="avatar">AQ</div>
+            <div className="avatar">
+              {(employee?.name || "Avery Quinn")
+                .split(" ")
+                .map((n) => n[0])
+                .slice(0, 2)
+                .join("")}
+            </div>
             <div>
-              <b>Avery Quinn</b>
-              <span>Owner</span>
+              <b>{employee?.name || "Avery Quinn"}</b>
+              <span title={employee?.email}>
+                {employee?.email || "Operations · Development"}
+              </span>
             </div>
             <span className="online-dot" />
           </div>
+          {employee && (
+            <div className="account-actions">
+              <button onClick={() => void signOut()}>Sign out</button>
+              <a
+                href="/auth/box/start"
+                onClick={() => abortWorkspaceRequests()}
+              >
+                Switch account
+              </a>
+            </div>
+          )}
         </div>
       </aside>
       <main>
@@ -574,7 +637,7 @@ function App() {
               {project
                 ? project.shortName
                 : view === "projects"
-                  ? "All projects"
+                  ? "Workspace projects"
                   : "Overview"}
             </b>
           </div>
@@ -583,9 +646,7 @@ function App() {
               className={"mode-pill " + (state.mode === "live" ? "live" : "")}
             >
               <i />
-              {state.mode === "live"
-                ? "Live · Box remote MCP"
-                : "Development demo"}
+              {state.mode === "live" ? "Connected to Box" : "Local development"}
             </span>
             <span className="date-label">
               {new Date(state.demoDate + "T12:00:00").toLocaleDateString(
@@ -622,23 +683,25 @@ function App() {
             <div>
               <div className="eyebrow">
                 {project
-                  ? `${project.id} / PROJECT DASHBOARD`
-                  : "YOUR BUSINESS, IN FOCUS"}
+                  ? `${project.businessId || project.id} / PROJECT DASHBOARD`
+                  : "CLEARWAVE AV / OPERATIONS"}
               </div>
               <h1>
                 {project
                   ? project.shortName
                   : view === "projects"
-                    ? "All projects"
-                    : "Good morning, Avery"}
+                    ? "Workspace projects"
+                    : "Billing workspace"}
                 {!project && view !== "projects" && (
                   <span className="greeting-dot">.</span>
                 )}
               </h1>
               <p>
                 {project
-                  ? project.name.split(" · ")[1] + " · " + project.owner
-                  : "Know what you can bill. Keep your business moving."}
+                  ? (project.name.split(" · ")[1] || project.name) +
+                    " · " +
+                    project.owner
+                  : "Track completed work, resolve missing evidence, and prepare billing packages from Clearwave AV’s Box documents."}
               </p>
             </div>
             <button
@@ -650,6 +713,38 @@ function App() {
               {refreshing ? "Checking evidence…" : "Refresh evidence"}
             </button>
           </div>
+          {state.discovery?.warnings?.length ? (
+            <div className="workspace-warning" role="status">
+              {state.discovery.warnings.map((warning, i) => (
+                <p key={i}>{warning}</p>
+              ))}
+            </div>
+          ) : null}
+          {!state.projects.length && (
+            <section className="empty-workspace">
+              <FolderKanban size={28} />
+              <h2>No supported projects in this folder</h2>
+              <p>
+                Choose a folder containing project.json records and the standard
+                project subfolders.
+              </p>
+              {employee && (
+                <button className="button primary" onClick={changeWorkspace}>
+                  Choose another folder
+                </button>
+              )}
+            </section>
+          )}
+          {project?.folderId && (
+            <a
+              className="box-project-link"
+              href={"https://app.box.com/folder/" + project.folderId}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open project in Box <ExternalLink size={14} />
+            </a>
+          )}
           {project && (
             <div
               className={
@@ -884,20 +979,23 @@ function App() {
                 <div
                   className="donut"
                   style={{
-                    background: `conic-gradient(#427e65 0 ${(t.ready / (t.ready + t.blocked + t.future)) * 100}%, #d3a45f ${(t.ready / (t.ready + t.blocked + t.future)) * 100}% ${((t.ready + t.blocked) / (t.ready + t.blocked + t.future)) * 100}%, #e5e8e1 0)`,
+                    background: `conic-gradient(#0061d5 0 ${(t.ready / Math.max(1, t.ready + t.blocked + t.future)) * 100}%, #d3a45f ${(t.ready / Math.max(1, t.ready + t.blocked + t.future)) * 100}% ${((t.ready + t.blocked) / Math.max(1, t.ready + t.blocked + t.future)) * 100}%, #e2e8f0 0)`,
                   }}
                 >
                   <div>
                     <span>Unissued scope</span>
                     <b>{money(t.ready + t.blocked + t.future)}</b>
-                    <small>across 5 projects</small>
+                    <small>
+                      across {state.projects.length}{" "}
+                      {state.projects.length === 1 ? "project" : "projects"}
+                    </small>
                   </div>
                 </div>
                 <div className="legend">
                   {[
-                    ["Ready to bill", t.ready, "#427e65"],
+                    ["Ready to bill", t.ready, "#0061d5"],
                     ["Blocked", t.blocked, "#d3a45f"],
-                    ["Future work", t.future, "#e5e8e1"],
+                    ["Future work", t.future, "#e2e8f0"],
                   ].map(([l, v, c]) => (
                     <div key={l}>
                       <span>
@@ -915,7 +1013,8 @@ function App() {
             <section className="card portfolio">
               <div className="section-head">
                 <h2>
-                  Project portfolio <span className="count">5</span>
+                  Project portfolio{" "}
+                  <span className="count">{state.projects.length}</span>
                 </h2>
                 <div className="table-actions">
                   {view === "projects" ? (
@@ -1026,7 +1125,10 @@ function App() {
                     .includes(search.toLowerCase()),
                 ) && <div className="empty">No projects match “{search}”.</div>}
               <div className="table-footer">
-                <span>5 active projects</span>
+                <span>
+                  {state.projects.length} active{" "}
+                  {state.projects.length === 1 ? "project" : "projects"}
+                </span>
                 <span>
                   Total contracted <b>{money(state.totals.value)}</b>
                 </span>
@@ -1417,8 +1519,8 @@ function App() {
                         <ShieldCheck size={28} />
                         <b>No drafts awaiting review</b>
                         <p>
-                          Ask BillReady to prepare an invoice or a customer
-                          follow-up.
+                          Ask the billing assistant to prepare an invoice or a
+                          customer follow-up.
                         </p>
                       </div>
                     )}
@@ -1504,7 +1606,7 @@ function App() {
                     </div>
                     <div>
                       <dt>Payment terms</dt>
-                      <dd>Net 30 · USD · $0 demo tax</dd>
+                      <dd>Net 30 · USD · $0 tax assumption</dd>
                     </div>
                   </dl>
                 </section>
@@ -1557,10 +1659,10 @@ function App() {
               <Sparkles size={19} />
             </div>
             <div>
-              <h2>BillReady agent</h2>
+              <h2>Billing assistant</h2>
               <span>
                 <i />
-                Your billing copilot
+                Clearwave AV · Operations
               </span>
             </div>
             <button
@@ -1574,7 +1676,7 @@ function App() {
           <div className="agent-context">
             <span>WORKING IN</span>
             <b>
-              {project ? project.shortName : "All projects"}
+              {project ? project.shortName : "Workspace projects"}
               <ChevronDown size={13} />
             </b>
           </div>
@@ -1593,7 +1695,7 @@ function App() {
               <h3>
                 {project
                   ? "Let’s move this project forward."
-                  : "A little clarity. A lot of momentum."}
+                  : "Project evidence, at a glance."}
               </h3>
               <p>
                 {project
@@ -1745,11 +1847,11 @@ function App() {
             >
               <textarea
                 rows={2}
-                aria-label="Ask BillReady"
+                aria-label="Ask the billing assistant"
                 placeholder={
                   project
                     ? "Ask about this project…"
-                    : "Ask BillReady anything…"
+                    : "Ask the billing assistant anything…"
                 }
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
@@ -1787,7 +1889,7 @@ function App() {
       {!agentOpen && (
         <button className="agent-fab" onClick={() => setAgentOpen(true)}>
           <Sparkles size={19} />
-          Ask BillReady
+          Ask the billing assistant
         </button>
       )}
       {notice && (
@@ -1866,13 +1968,13 @@ function App() {
             className="presenter-modal"
             role="dialog"
             aria-modal="true"
-            aria-label="Presenter controls"
+            aria-label="Connection & diagnostics"
           >
             <div className="modal-head">
-              <b>Presenter controls</b>
+              <b>Connection & diagnostics</b>
               <button
                 className="icon-btn"
-                aria-label="Close presenter controls"
+                aria-label="Close connection diagnostics"
                 onClick={() => setPresenter(false)}
               >
                 <X size={20} />
@@ -1888,7 +1990,7 @@ function App() {
                 <b>
                   {state.mode === "development"
                     ? "Development adapter · simulated integration"
-                    : "Live · Box remote MCP"}
+                    : "Connected to Box"}
                 </b>
                 <p>
                   {state.mode === "development"
@@ -1896,6 +1998,18 @@ function App() {
                     : "Content operations go through https://mcp.box.com. Binary transfers use MCP-issued URLs."}
                 </p>
               </div>
+              {employee && (
+                <>
+                  <h3>Rehearsal reset</h3>
+                  <p>
+                    Preview non-baseline acceptance, billing and follow-up files
+                    before archiving them and restoring this sample workspace.
+                  </p>
+                  <a className="button secondary" href="#reset">
+                    Preview workspace reset
+                  </a>
+                </>
+              )}
               <h3>Connection status</h3>
               <a className="button secondary" href="/auth/box/start">
                 Connect Box with OAuth
@@ -1908,7 +2022,7 @@ function App() {
                       {k === "box"
                         ? "Box authorization"
                         : k === "root"
-                          ? "Demo root folder"
+                          ? "Workspace folder"
                           : k === "provider"
                             ? "Agent provider"
                             : "Model authorization"}
@@ -2488,4 +2602,430 @@ function Review({
     </div>
   );
 }
-createRoot(document.getElementById("root")!).render(<App />);
+const browserInstanceId = crypto.randomUUID();
+async function signOut() {
+  abortWorkspaceRequests();
+  const response = await fetch("/auth/signout", { method: "POST" });
+  if (!response.ok) throw Error("Could not sign out.");
+  const channel = new BroadcastChannel("billready-session");
+  channel.postMessage({ kind: "changed", sender: browserInstanceId });
+  channel.close();
+  location.hash = "overview";
+  location.reload();
+}
+function EmployeeApp() {
+  const [route, setRoute] = useState(location.hash);
+  useEffect(() => {
+    const changed = () => {
+      setRoute(location.hash);
+    };
+    window.addEventListener("hashchange", changed);
+    return () => window.removeEventListener("hashchange", changed);
+  }, []);
+
+  const [session, setSession] = useState<{
+    mode: string;
+    employee: Identity | null;
+    workspace: Workspace | null;
+  }>();
+  const [choosing, setChoosing] = useState(false),
+    [error, setError] = useState("");
+  const fingerprint = useRef("");
+  async function checkSession() {
+    try {
+      const r = await fetch("/api/session", { cache: "no-store" });
+      if (!r.ok) throw Error("Could not load your Box session.");
+      const next = await r.json(),
+        key = JSON.stringify(next);
+      if (fingerprint.current !== key) {
+        abortWorkspaceRequests();
+        fingerprint.current = key;
+        setSession(next);
+      }
+      setError("");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  useEffect(() => {
+    void checkSession();
+    const channel = new BroadcastChannel("billready-session");
+    channel.onmessage = (event) => {
+      if (event.data?.sender === browserInstanceId) return;
+      abortWorkspaceRequests();
+      setSession(undefined);
+      fingerprint.current = "";
+      void checkSession();
+    };
+    const timer = setInterval(() => void checkSession(), 15000);
+    return () => {
+      clearInterval(timer);
+      channel.close();
+      abortWorkspaceRequests();
+    };
+  }, []);
+  if (!session)
+    return (
+      <div className="entry-page">
+        <div className="entry-card">
+          <h1>Clearwave AV</h1>
+          <p>{error || "Loading your workspace…"}</p>
+          {error && (
+            <button
+              className="button secondary"
+              onClick={() => void checkSession()}
+            >
+              Try again
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  if (session.mode === "development") return <App changeWorkspace={() => {}} />;
+  if (!session.employee)
+    return (
+      <div className="entry-page">
+        <div className="entry-card">
+          <div className="eyebrow">CLEARWAVE AV / INTERNAL TOOLS</div>
+          <h1>
+            Your projects.
+            <br />
+            Your Box workspace.
+          </h1>
+          <p className="entry-lead">
+            BillReady helps our operations team turn completed work into
+            billing-ready packages using the documents we already keep in Box.
+          </p>
+          <a className="button primary" href="/auth/box/start">
+            Sign in with Box <ArrowRight size={17} />
+          </a>
+          <div className="entry-note">
+            <ShieldCheck size={17} />
+            <span>
+              Your Box permissions determine which project folders you can
+              access.
+            </span>
+          </div>
+          <footer>Built by Clearwave AV engineering · Box MCP + Box AI</footer>
+        </div>
+      </div>
+    );
+  if (choosing || !session.workspace)
+    return (
+      <FolderChooser
+        employee={session.employee}
+        current={session.workspace || undefined}
+        cancel={session.workspace ? () => setChoosing(false) : undefined}
+        selected={async () => {
+          abortWorkspaceRequests();
+          setChoosing(false);
+          setSession(undefined);
+          location.hash = "overview";
+          const channel = new BroadcastChannel("billready-session");
+          channel.postMessage({ kind: "changed", sender: browserInstanceId });
+          channel.close();
+          await checkSession();
+        }}
+      />
+    );
+  if (route === "#reset")
+    return (
+      <ResetWorkspace
+        employee={session.employee}
+        workspace={session.workspace}
+        done={() => {
+          location.hash = "overview";
+        }}
+      />
+    );
+  return (
+    <App
+      key={session.employee.id + "/" + session.workspace.id}
+      employee={session.employee}
+      workspace={session.workspace}
+      changeWorkspace={() => {
+        abortWorkspaceRequests();
+        setChoosing(true);
+      }}
+    />
+  );
+}
+type ResetPreview = {
+  workspace: Workspace;
+  files: Doc[];
+  fingerprint: string;
+  message: string;
+};
+function ResetWorkspace({
+  employee,
+  workspace,
+  done,
+}: {
+  employee: Identity;
+  workspace: Workspace;
+  done: () => void;
+}) {
+  const [preview, setPreview] = useState<ResetPreview>(),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false),
+    [complete, setComplete] = useState("");
+  async function refreshPreview() {
+    setBusy(true);
+    setError("");
+    setPreview(undefined);
+    try {
+      setPreview(await api("/reset/preview", { method: "POST", ...json({}) }));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  useEffect(() => {
+    void refreshPreview();
+    return () => abortWorkspaceRequests();
+  }, []);
+  async function apply() {
+    if (!preview) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api("/reset/apply", {
+        method: "POST",
+        ...json({ fingerprint: preview.fingerprint, confirm: true }),
+      });
+      setComplete(result.message + " Archived " + result.archived + " files.");
+      setPreview(undefined);
+      const channel = new BroadcastChannel("billready-session");
+      channel.postMessage({ kind: "changed", sender: browserInstanceId });
+      channel.close();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="entry-page">
+      <div className="entry-card folder-chooser">
+        <div className="eyebrow">CLEARWAVE AV / REHEARSAL</div>
+        <h1>Reset this workspace</h1>
+        <p>
+          <strong>{workspace.name}</strong> · {employee.email}
+        </p>
+        <p>
+          Original sample documents and your Box sign-in are preserved. Listed
+          files move into a rehearsal archive; nothing is deleted from Box.
+        </p>
+        <div className="workspace-warning">
+          This affects the selected shared Box folder for everyone who uses it.
+          Other Box workspaces are unchanged.
+        </div>
+        {busy && (
+          <p role="status">
+            {preview
+              ? "Archiving files and restoring the workflow…"
+              : "Reading the selected workspace…"}
+          </p>
+        )}
+        {error && (
+          <p className="workspace-warning" role="alert">
+            {error} If an archive was interrupted, preview again and retry;
+            already archived files stay safe.
+          </p>
+        )}
+        {preview && (
+          <>
+            <h3>
+              {preview.files.length}{" "}
+              {preview.files.length === 1 ? "file" : "files"} to archive
+            </h3>
+            <div className="folder-list">
+              {preview.files.map((file) => (
+                <div className="reset-file" key={file.id}>
+                  <FileText size={17} />
+                  <span>{file.name}</span>
+                  <a
+                    href={"https://app.box.com/file/" + file.boxId}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open in Box ↗
+                  </a>
+                </div>
+              ))}
+              {!preview.files.length && (
+                <p>
+                  No extra files to archive. Local chats, drafts and checkpoints
+                  will still reset.
+                </p>
+              )}
+            </div>
+            <p>{preview.message}</p>
+          </>
+        )}
+        {complete && <p role="status">{complete}</p>}
+        <div className="folder-actions">
+          <button className="button secondary" disabled={busy} onClick={done}>
+            {complete ? "Return to workspace" : "Cancel"}
+          </button>
+          {!complete && (
+            <>
+              <button
+                className="button secondary"
+                disabled={busy}
+                onClick={() => void refreshPreview()}
+              >
+                Refresh preview
+              </button>
+              <button
+                className="button primary"
+                disabled={busy || !preview}
+                onClick={() => void apply()}
+              >
+                Archive files & reset workspace
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+function FolderChooser({
+  employee,
+  current,
+  selected,
+  cancel,
+}: {
+  employee: Identity;
+  current?: Workspace;
+  selected: () => Promise<void>;
+  cancel?: () => void;
+}) {
+  const [trail, setTrail] = useState<Workspace[]>([
+    { id: "0", name: "All files" },
+  ]);
+  const [entries, setEntries] = useState<Workspace[]>([]),
+    [next, setNext] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false),
+    [saving, setSaving] = useState(false),
+    [error, setError] = useState("");
+  const folder = trail.at(-1)!;
+  async function browse(offset = 0) {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await api(
+        "/folders?folderId=" + folder.id + "&offset=" + offset,
+      );
+      setEntries((items) =>
+        offset ? [...items, ...data.entries] : data.entries,
+      );
+      setNext(data.nextOffset);
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => {
+    setEntries([]);
+    setNext(null);
+    void browse();
+    return () => abortWorkspaceRequests();
+  }, [folder.id]);
+  async function choose() {
+    setSaving(true);
+    setError("");
+    try {
+      await api("/workspace", {
+        method: "POST",
+        ...json({ folderId: folder.id }),
+      });
+      await selected();
+    } catch (e) {
+      setError((e as Error).message);
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="entry-page">
+      <div className="entry-card folder-chooser">
+        <div className="eyebrow">CLEARWAVE AV / BILLREADY</div>
+        <h1>Choose your workspace</h1>
+        <p>
+          Signed in as <strong>{employee.name}</strong> · {employee.email}
+        </p>
+        <p>
+          Select a folder containing your project records. Only supported
+          projects you can access within that folder will appear.
+        </p>
+        {current && <p className="subtle">Current workspace: {current.name}</p>}
+        <nav className="folder-breadcrumb" aria-label="Box folders">
+          {trail.map((f, i) => (
+            <button
+              key={f.id}
+              onClick={() => setTrail((t) => t.slice(0, i + 1))}
+              disabled={saving}
+            >
+              {f.name}
+              {i < trail.length - 1 && <ChevronRight size={13} />}
+            </button>
+          ))}
+        </nav>
+        {error && (
+          <div className="workspace-warning" role="alert">
+            {error}
+            <button onClick={() => void browse()}>Retry listing</button>
+          </div>
+        )}
+        <div className="folder-list">
+          {entries.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setTrail((t) => [...t, f])}
+              disabled={saving || loading}
+            >
+              <FolderKanban size={20} />
+              <span>{f.name}</span>
+              <ChevronRight size={16} />
+            </button>
+          ))}
+          {loading && <p role="status">Loading folders…</p>}
+          {!loading && !error && !entries.length && <p>No subfolders here.</p>}
+          {next !== null && (
+            <button
+              disabled={loading || saving}
+              onClick={() => void browse(next)}
+            >
+              Load more folders
+            </button>
+          )}
+        </div>
+        <div className="folder-actions">
+          {cancel && (
+            <button className="button secondary" onClick={cancel}>
+              Cancel
+            </button>
+          )}
+          <button
+            className="button primary"
+            disabled={folder.id === "0" || saving || loading || !!error}
+            onClick={() => void choose()}
+          >
+            {saving ? "Opening workspace…" : "Use this folder"}
+          </button>
+        </div>
+        <div className="account-actions">
+          <button onClick={() => void signOut()}>Sign out</button>
+          <a href="/auth/box/start" onClick={() => abortWorkspaceRequests()}>
+            Switch Box account
+          </a>
+        </div>
+        <footer>Built by Clearwave AV engineering · Box MCP + Box AI</footer>
+      </div>
+    </div>
+  );
+}
+createRoot(document.getElementById("root")!).render(<EmployeeApp />);

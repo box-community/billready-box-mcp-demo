@@ -1,5 +1,22 @@
 # Verification record
 
+
+## Authenticated workspace reset — November 4, 2026
+
+- `npm run reset` in live mode exits successfully with the account-bound browser preview link; it does not read legacy credentials or archive files on its own. Local development retains the existing preview/`--apply` behavior.
+- All **40 automated tests** pass. Reset tests cover anonymous rejection, selected-folder scope, baseline preservation, stale preview rejection, an interruption after a successful move, retry without losing archived files, restoration of Alder & Finch’s $18,000 blocker, preservation of another Box workspace and sign-in, and invalidation of a collaborator’s local state for the same reset folder.
+- Build/type checking passed. Browser fixture verification covered the listed-file preview, archive/reset confirmation, stable completion message and return to the blocked project. Archive/create/move operations used isolated fixtures; no live Box files were moved or deleted while implementing this feature.
+
+## Employee workspaces — November 4, 2026
+
+- `npm test`: **39 passing tests**, including controlled two-account OAuth, separate folder lists, shared project access, single-flight token refresh, scoped SQLite/files/traces, anonymous and cross-account ID rejection, permission loss, empty/unsupported/duplicate project discovery, and interrupted scans retaining the last complete inventory.
+- The isolated HTTP workflow exercised acceptance PDF upload with streamed MCP/transfer events, extraction before readiness changes, PDF invoice preview, four saved output artifacts, repeated approval, and two employees approving the same Box project with identical output IDs. These are fixtures; no live Box files were created by them.
+- `npm run build` and whitespace checks passed. Browser inspection covered sign-in, folder selection, discovered project counts, project detail, readable MCP parameters/results, fitted invoice review and saved-package handoff. A 390px iframe exercised responsive rendering; this was not a physical mobile-device test.
+- A real employee OAuth sign-in succeeded as Chris Kim (`chriskim@boxdemo.com`). The folder browser used that account’s Box content; selecting the existing workspace `429787316757` discovered five project records and validated existing acceptance through hosted Box MCP/Box AI. The result was $58,000 ready, $0 blocked, $242,000 invoiced and $12,000 outstanding, reflecting documents already in Box. Selection does not reset those documents.
+- Live assistant verification exposed a business-code versus folder-scoped-ID mismatch. The resolver now accepts a business code only when it uniquely identifies an accessible project; tests verify ambiguity and cross-project rejection. The final live assistant recheck passed after reauthentication: the remembered workspace was restored, `ai_qa_multi_file` completed, and its actual source IDs, instructions, duration and structured response were inspected in the UI.
+- Real simultaneous two-account verification remains unavailable without a second authorized employee account. Fixture coverage is not a substitute for that check.
+- The legacy shared token file and database were not migrated, reset or assigned to an employee. No Box sharing, deletion or archive operation was performed. Video files and projects were not edited.
+
 BillReady was verified on October 21, 2026 with Node.js 26 and Chrome. These results describe the implementation rehearsal; each new installation still needs its own Box authorization and root configuration. Raw account-specific reports remain local and are excluded from the repository.
 
 ## Workflow UX verification — October 29, 2026

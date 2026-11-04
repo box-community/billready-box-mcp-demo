@@ -1,3 +1,4 @@
+import { currentEmployee } from "./context.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 export type Trace = {
   seq: number;
@@ -25,7 +26,14 @@ export const currentTrace = () => {
   const scope = listeners.getStore();
   return scope ? [...scope.entries.values()] : undefined;
 };
-export const trace: Trace[] = [];
+const legacyTrace: Trace[] = [];
+export const trace: Trace[] = new Proxy(legacyTrace, {
+  get(_target, key) {
+    const list = currentEmployee()?.traces || legacyTrace;
+    const value = Reflect.get(list, key);
+    return typeof value === "function" ? value.bind(list) : value;
+  },
+});
 let sequence = 0;
 export function sanitizeTrace(value: unknown): unknown {
   const secrets = ["BOX_CLIENT_SECRET", "BOX_MCP_TOKEN", "OPENAI_API_KEY"]
@@ -104,6 +112,7 @@ export async function traceCall<T>(
   fn: () => Promise<T>,
   kind: "mcp" | "transfer" = "mcp",
 ): Promise<T> {
+  currentEmployee()?.assertActive();
   const start = performance.now();
   const entry: Trace = {
     seq: ++sequence,
@@ -121,6 +130,7 @@ export async function traceCall<T>(
   publish(entry);
   try {
     const result = await fn();
+    currentEmployee()?.assertActive();
     entry.result = sanitizeTrace(result);
     const data = result as any;
     entry.resultSummary = ArrayBuffer.isView(data)

@@ -1,3 +1,6 @@
+import { currentEmployee, requireEmployee, workspaceRoot } from "./context.ts";
+import { projects } from "./store.ts";
+import { projectRecord } from "./project-record.ts";
 import { boxMcp } from "./box-mcp.ts";
 import { get, put, type Doc } from "./store.ts";
 import { traceCall } from "./tracing.ts";
@@ -46,6 +49,7 @@ export class RemoteBox {
     return entries;
   }
   async discover() {
+    if (currentEmployee()) return this.discoverEmployee();
     const root = process.env.BOX_DEMO_ROOT_ID;
     if (!root || root === "0" || !/^\d+$/.test(root))
       throw Error(
@@ -132,8 +136,249 @@ export class RemoteBox {
     );
     return out;
   }
+  async discoverEmployee() {
+    const scope = requireEmployee(),
+      root = scope.workspace?.id;
+    if (!root) throw Error("Choose a workspace folder first.");
+    await boxMcp.callBoxTool("get_folder_details", { folder_id: root });
+    const files: (Doc & { ancestors: string[] })[] = [];
+    const folders: { id: string; name: string; ancestors: string[] }[] = [];
+    const warnings: string[] = [];
+    let count = 0;
+    const walk = async (id: string, ancestors: string[], names: string[]) => {
+      if (++count > 150)
+        throw Error("Workspace exceeds 150 folders. Select a smaller folder.");
+      let entries: any[];
+      try {
+        entries = await this.list(id);
+      } catch (e) {
+        if (
+          id !== root &&
+          /403|404|forbidden|not.found|access.denied/i.test(String(e))
+        ) {
+          warnings.push("A folder is no longer accessible and was skipped.");
+          return;
+        }
+        throw e;
+      }
+      for (const entry of entries) {
+        if (
+          entry.type === "folder" &&
+          entry.name !== ARCHIVE_NAME &&
+          !entry.name.startsWith(".")
+        ) {
+          folders.push({ id: String(entry.id), name: entry.name, ancestors });
+          await walk(
+            String(entry.id),
+            [...ancestors, String(entry.id)],
+            [...names, entry.name],
+          );
+        } else if (entry.type === "file" && !entry.name.startsWith(".")) {
+          files.push({
+            id: "box-" + entry.id,
+            boxId: String(entry.id),
+            folderId: id,
+            name: entry.name,
+            ancestors,
+            category: names.includes("03 Acceptance")
+              ? "Acceptance"
+              : names.includes("02 Delivery evidence")
+                ? "Delivery evidence"
+                : names.includes("04 Billing")
+                  ? "Billing"
+                  : names.includes("05 Follow-ups")
+                    ? "Follow-ups"
+                    : "Project records",
+          });
+        }
+      }
+    };
+    await walk(root, [root], []);
+    const mapped: Record<string, string> = {},
+      discovered = [],
+      seen = new Set<string>();
+    for (const file of files.filter((f) => f.name === "project.json")) {
+      const parent = folders.find((f) => f.id === file.folderId);
+      const projectFolder =
+        parent?.name === "01 Project records"
+          ? parent.ancestors.at(-1)!
+          : file.folderId!;
+      let record;
+      try {
+        record = projectRecord(
+          await boxMcp.callBoxTool("get_file_content", {
+            file_id: file.boxId!,
+          }),
+        );
+      } catch (e) {
+        if (!/Unsupported project record/.test(String(e))) throw e;
+        warnings.push(
+          "A project.json record has an unsupported format and was skipped.",
+        );
+        continue;
+      }
+      if (seen.has(record.id))
+        throw Error("Duplicate project code in this workspace: " + record.id);
+      seen.add(record.id);
+      const id = record.id + "~" + projectFolder;
+      const projectFolders = folders.filter((f) =>
+        f.ancestors.includes(projectFolder),
+      );
+      const required = [
+        "01 Project records",
+        "02 Delivery evidence",
+        "03 Acceptance",
+        "04 Billing",
+        "05 Follow-ups",
+      ];
+      if (
+        required.some(
+          (name) =>
+            !projectFolders.some(
+              (f) => f.name === name && f.ancestors.at(-1) === projectFolder,
+            ),
+        )
+      ) {
+        warnings.push(record.id + ": missing a required project subfolder.");
+        continue;
+      }
+      const old = projects().find((p) => p.id === id);
+      const p = {
+        ...record,
+        id,
+        businessId: record.id,
+        folderId: projectFolder,
+        milestones: record.milestones.map((m) => {
+          const prior = old?.milestones.find(
+            (x) =>
+              x.id === m.id &&
+              x.cents === m.cents &&
+              x.complete === m.complete &&
+              x.issued === m.issued,
+          );
+          return {
+            ...m,
+            accepted: m.issued
+              ? m.accepted
+              : m.acceptanceRequired
+                ? !!prior?.acceptanceFileId && !!prior.accepted
+                : m.accepted,
+            ...(prior?.acceptanceFileId
+              ? { acceptanceFileId: prior.acceptanceFileId }
+              : {}),
+          };
+        }),
+      };
+      discovered.push(p);
+      mapped[id + "/project"] = projectFolder;
+      for (const folder of projectFolders)
+        mapped[id + "/" + folder.name] = folder.id;
+      for (const d of files)
+        if (d.ancestors.includes(projectFolder)) d.projectId = id;
+    }
+    const visible = files.filter(
+      (f) =>
+        f.projectId ||
+        f.ancestors.length === 1 ||
+        folders.some((x) => x.id === f.folderId && x.name === "Company"),
+    );
+    const docs = visible.map(({ ancestors, ...d }) => d);
+    put("projects", discovered);
+    put("mappedRoot", root);
+    put("boxFolders", mapped);
+    put("allowedFolders", [root, ...Object.values(mapped)]);
+    put(
+      "allowedFiles",
+      docs.map((d) => d.boxId),
+    );
+    put("discovery", {
+      status: discovered.length ? "ready" : "empty",
+      warnings,
+    });
+    const ids = new Set(discovered.map((p) => p.id));
+    put(
+      "proposals",
+      get<any[]>("proposals", []).filter((p) => ids.has(p.projectId)),
+    );
+    return docs;
+  }
+  async verifyAccess() {
+    const scope = requireEmployee();
+    if (!scope.workspace) return;
+    try {
+      await boxMcp.callBoxTool("get_folder_details", {
+        folder_id: scope.workspace.id,
+      });
+    } catch (e) {
+      for (const p of projects()) put("chat:" + p.id, []);
+      put("projects", []);
+      put("documents", []);
+      put("proposals", []);
+      put("boxFolders", {});
+      put("allowedFiles", []);
+      put("allowedFolders", []);
+      put("activity", []);
+      put("chat:overview", []);
+      for (const p of projects()) put("chat:" + p.id, []);
+      scope.traces.length = 0;
+      put("discovery", {
+        status: "inaccessible",
+        warnings: [
+          "Workspace access is unavailable. Choose another folder or reconnect Box.",
+        ],
+      });
+      throw Object.assign(
+        Error(
+          "Workspace access is unavailable. Choose another folder or reconnect Box.",
+        ),
+        { status: 403 },
+      );
+    }
+    for (const p of projects()) {
+      try {
+        await boxMcp.callBoxTool("get_folder_details", {
+          folder_id: p.folderId!,
+        });
+      } catch (e) {
+        if (!/403|404|forbidden|not.found|access.denied/i.test(String(e)))
+          throw e;
+        put(
+          "projects",
+          projects().filter((x) => x.id !== p.id),
+        );
+        put(
+          "documents",
+          get<Doc[]>("documents", []).filter((d) => d.projectId !== p.id),
+        );
+        put(
+          "proposals",
+          get<any[]>("proposals", []).filter((x) => x.projectId !== p.id),
+        );
+        const mappings = get<Record<string, string>>("boxFolders", {});
+        put(
+          "boxFolders",
+          Object.fromEntries(
+            Object.entries(mappings).filter(
+              ([key]) => !key.startsWith(p.id + "/"),
+            ),
+          ),
+        );
+        put(
+          "allowedFiles",
+          get<Doc[]>("documents", []).map((d) => d.boxId),
+        );
+        put("chat:" + p.id, []);
+        put("chat:overview", []);
+        put(
+          "activity",
+          get<any[]>("activity", []).filter((a) => a.projectId !== p.id),
+        );
+        scope.traces.length = 0;
+      }
+    }
+  }
   async archiveOwned(owned: Doc[]) {
-    const root = process.env.BOX_DEMO_ROOT_ID!;
+    const root = workspaceRoot() || process.env.BOX_DEMO_ROOT_ID!;
     if (get("mappedRoot", "") !== root)
       throw Error("Refresh the configured root before reset");
     const active = await this.discover();
@@ -148,8 +393,8 @@ export class RemoteBox {
     if (
       rootSecurity.sharedLink ||
       rootSecurity.shared_link ||
-      rootSecurity.hasCollaborations ||
-      rootSecurity.has_collaborations
+      (!currentEmployee() &&
+        (rootSecurity.hasCollaborations || rootSecurity.has_collaborations))
     )
       throw Error("Reset archive requires an unshared internal demo root");
     const items = await this.list(root);
@@ -187,11 +432,20 @@ export class RemoteBox {
         originalFolderId: d.folderId,
         archiveFolderId: batch,
       });
+      put("resetArchiveReceipts", [
+        ...get<any[]>("resetArchiveReceipts", []).filter(
+          (r) => r.fileId !== d.boxId,
+        ),
+        receipts.at(-1),
+      ]);
     }
     return receipts;
   }
   async persist(bytes: Buffer, name: string, pid: string, category: string) {
-    if (get("mappedRoot", "") !== process.env.BOX_DEMO_ROOT_ID)
+    if (
+      get("mappedRoot", "") !==
+      (workspaceRoot() || process.env.BOX_DEMO_ROOT_ID)
+    )
       throw Error("Demo root changed. Refresh mappings before saving.");
     const folders = get<Record<string, string>>("boxFolders", {});
     const folderId = folders[pid + "/" + category];
@@ -207,11 +461,11 @@ export class RemoteBox {
     if (
       security.sharedLink ||
       security.shared_link ||
-      security.hasCollaborations ||
-      security.has_collaborations
+      (!currentEmployee() &&
+        (security.hasCollaborations || security.has_collaborations))
     )
       throw Error(
-        "Destination has sharing or collaborations. Use an unshared internal demo folder before saving.",
+        "Destination has a shared link. Use an internal folder without a shared link before saving.",
       );
     const existing = (await this.list(folderId)).find(
       (x: any) => x.type === "file" && x.name === name,

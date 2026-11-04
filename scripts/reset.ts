@@ -11,6 +11,20 @@ import {
   dataDir,
 } from "../server/store.ts";
 import { mode, localSeedDocs, remote } from "../server/adapter.ts";
+if (mode === "live") {
+  const url = `http://127.0.0.1:${process.env.PORT || 4310}/#reset`;
+  console.log(
+    "Live reset uses your authenticated browser session and selected workspace.",
+  );
+  console.log(
+    "Keep npm run dev running. Open this link to preview the files and confirm archive + reset:",
+  );
+  console.log(url);
+  console.log(
+    "No changes have been made. Box files are archived only after you confirm the preview in the app.",
+  );
+  process.exit(0);
+}
 const owned = documents().filter(
   (d) =>
     d.generated ||
