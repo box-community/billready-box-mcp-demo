@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import { z } from "zod";
+import { projectRecordSchema } from "../server/project-record.ts";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
@@ -14,7 +16,7 @@ const base = path.resolve("demo-kit");
 const root = path.join(base, "upload-to-box", "BillReady Demo");
 const write = (p: string, v: string) => {
   fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, v);
+  fs.writeFileSync(p, p.endsWith(".md") ? v.replaceAll("\\n", "\n") : v);
 };
 const ps = seedProjects();
 const dirs = [
@@ -158,7 +160,7 @@ for (const p of ps) {
     );
   write(
     path.join(dir, dirs[4], "README.md"),
-    `# ${p.id} follow-ups\n${p.id === "CW-101" ? `Alex Chan: request signed acceptance from ${p.contact}; due ${dateOffset(1)}. Owner review required before saving a new follow-up.` : p.id === "CW-104" ? `Alex Chan: confirm equipment delivery; due ${dateOffset(2)}.` : "No pending customer request at initial state."}\n`,
+    `# ${p.id} follow-ups\n${p.id === "CW-101" ? `Alex Chan: request signed acceptance from ${p.contact}; due ${dateOffset(1)}. Operations review required before saving a new follow-up.` : p.id === "CW-104" ? `Alex Chan: confirm equipment delivery; due ${dateOffset(2)}.` : "No pending customer request at initial state."}\n`,
   );
   manifest.push({
     projectId: p.id,
@@ -192,6 +194,23 @@ write(
       demoDate: DEMO_DATE,
       currency: "USD",
       amountsAre: "integer cents",
+      scenarioNotes: {
+        initial: "Development seed before discovering misplaced evidence.",
+        afterHeroUpload:
+          "Development sequence after the hero upload, before Northstar discovery.",
+        liveAfterInitialDiscovery:
+          "Full clean sample tree after original acceptance is verified, including Northstar.",
+        liveAfterHeroUpload:
+          "Full verified sample tree after Alder & Finch acceptance upload.",
+        warning:
+          "Live totals depend on accessible projects and actual files. Use hero-project amounts for the main reveal.",
+      },
+      liveAfterInitialDiscovery: {
+        ...totals(ps),
+        ready: 4000000,
+        blocked: 1800000,
+      },
+      liveAfterHeroUpload: { ...totals(ps), ready: 5800000, blocked: 0 },
       initial: totals(ps),
       afterHeroUpload: { ...totals(ps), ready: 4200000, blocked: 1600000 },
       afterDiscovery: { ...totals(ps), ready: 5800000, blocked: 0 },
@@ -211,43 +230,16 @@ write(
   path.join(base, "configuration", "project.schema.json"),
   JSON.stringify(
     {
-      $schema: "https://json-schema.org/draft/2020-12/schema",
-      type: "object",
-      required: ["id", "client", "milestones"],
-      properties: {
-        id: { type: "string", pattern: "^CW-10[1-5]$" },
-        client: { type: "string" },
-        milestones: {
-          type: "array",
-          minItems: 3,
-          maxItems: 4,
-          items: {
-            type: "object",
-            required: [
-              "id",
-              "cents",
-              "complete",
-              "issued",
-              "acceptanceRequired",
-              "accepted",
-              "paidCents",
-            ],
-            properties: {
-              id: { type: "string", pattern: "^M[1-4]$" },
-              cents: { type: "integer", minimum: 1 },
-              paidCents: { type: "integer", minimum: 0 },
-              complete: { type: "boolean" },
-              issued: { type: "boolean" },
-              acceptanceRequired: { type: "boolean" },
-              accepted: { type: "boolean" },
-            },
-          },
-        },
-      },
+      ...z.toJSONSchema(projectRecordSchema, {
+        target: "draft-2020-12",
+        io: "input",
+      }),
+      description:
+        "BillReady project record. The server additionally checks unique milestone IDs, paid amounts not exceeding milestone values, and a safe-integer total.",
     },
     null,
     2,
-  ),
+  ) + "\n",
 );
 execFileSync(
   "zip",

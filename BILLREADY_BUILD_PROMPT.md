@@ -1,3 +1,5 @@
+> **Historical implementation brief:** This is the original product request, retained as provenance. Current employee OAuth, folder selection, ownership and reset behavior are documented in [README.md](README.md) and the linked guides. Older owner-centric language and opening totals below are not current setup instructions.
+
 # Goal: Build BillReady and its complete conference demo kit
 
 Build and verify a polished, working web app named **BillReady** for **Clearwave AV**, a fictional AV installation company. Deliver the application, a custom agent connected to Box MCP, and all synthetic documents and folder structures needed to rehearse the demo. Work toward the completion criteria below; implement and test the app rather than stopping at a plan or static mockup.

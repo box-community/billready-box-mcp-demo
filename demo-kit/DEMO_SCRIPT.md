@@ -10,7 +10,9 @@ Open http://127.0.0.1:4310. Show **Sign in with Box**, then choose an accessible
 
 Explain: “This is my Box account and the project content I can access. A colleague can sign in with their own account and choose their workspace. Shared projects can appear for both of us.”
 
-Use a fresh sample workspace with Alder & Finch’s signed acceptance kept outside it. Initial portfolio totals depend on accessible projects and verified evidence. Do not promise a fixed five-project opening total.
+Use a fresh sample workspace with Alder & Finch’s signed acceptance kept outside it, or complete one of the [reset flows](RESET.md). The quick manual-cleanup route is the shortest repeat-run path. Initial portfolio totals depend on accessible projects and verified evidence. Do not promise a fixed five-project opening total.
+
+The five sample projects are assigned to **Alex Chan**. This is the business owner field, not a claim about who owns the Box folder or which account is signed in.
 
 ## 2. Identify the billing blocker
 
@@ -41,3 +43,7 @@ Open the saved outputs in Box. Approval saves drafts; it does not issue invoices
 “Clearwave’s engineer defined this interface and the billing rules. Box MCP connects those actions to each employee’s permitted content, and Box AI helps interpret the evidence. The same approach lets companies build Box experiences around their own teams and processes.”
 
 If two real test accounts are available, sign out and repeat folder selection with the second account to show its own project list. Never present fixture accounts or local development activity as live Box access.
+
+## Optional developer explanation
+
+Use the [three-stop code walkthrough](../docs/BOX_MCP_WALKTHROUGH.md): hosted connection and tool discovery → actual `client.callTool()` → extraction followed by application validation. Skip credentials and reset internals during the main presentation. A timed version is in [Five-minute live demo](FIVE_MINUTE_LIVE_DEMO.md).

@@ -97,5 +97,30 @@
     }
   ],
   "heroFinalMilestoneCents": 1800000,
-  "preparedDoesNotChangeFinancials": true
+  "preparedDoesNotChangeFinancials": true,
+  "scenarioNotes": {
+    "initial": "Development seed before discovering misplaced evidence.",
+    "afterHeroUpload": "Development sequence after the hero upload, before Northstar discovery.",
+    "liveAfterInitialDiscovery": "Full clean sample tree after original acceptance is verified, including Northstar.",
+    "liveAfterHeroUpload": "Full verified sample tree after Alder & Finch acceptance upload.",
+    "warning": "Live totals depend on accessible projects and actual files. Use hero-project amounts for the main reveal."
+  },
+  "liveAfterInitialDiscovery": {
+    "value": 33600000,
+    "invoiced": 24200000,
+    "outstanding": 1200000,
+    "thisMonth": 24200000,
+    "future": 3600000,
+    "blocked": 1800000,
+    "ready": 4000000
+  },
+  "liveAfterHeroUpload": {
+    "value": 33600000,
+    "invoiced": 24200000,
+    "outstanding": 1200000,
+    "thisMonth": 24200000,
+    "future": 3600000,
+    "blocked": 0,
+    "ready": 5800000
+  }
 }

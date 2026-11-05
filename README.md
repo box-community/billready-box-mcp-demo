@@ -6,6 +6,8 @@ This repository illustrates how a company can customize its Box experience using
 
 The application prepares drafts. Approval saves documents to Box; employees finalize invoices in their accounting system and send emails themselves.
 
+[Setup](demo-kit/SETUP.md) · [Walkthrough](demo-kit/DEMO_SCRIPT.md) · [Reset options](demo-kit/RESET.md) · [MCP code walkthrough](docs/BOX_MCP_WALKTHROUGH.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Verification](docs/verification.md)
+
 ## What employees can do
 
 - See ready, blocked, future, invoiced, and outstanding amounts for their workspace projects.
@@ -17,30 +19,30 @@ The application prepares drafts. Approval saves documents to Box; employees fina
 
 ## Technology and responsibilities
 
-| Layer | Technology | Responsibility |
-| --- | --- | --- |
-| Employee interface | React 19, TypeScript, Vite, PDF.js, Lucide | Workspace, projects, assistant, review, document preview |
-| Application server | Node.js, Express, TypeScript | Employee sessions, OAuth, validated actions, streaming activity |
-| Workflow state | SQLite and restricted local directories | Separate chats, proposals, mappings, files and checkpoints per employee/workspace |
-| MCP client | Official MCP TypeScript SDK, Streamable HTTP, AJV | Per-account connection to Box’s hosted MCP, actual schema validation |
-| Content and intelligence | Box, Box AI through hosted MCP | Project evidence, document extraction and reasoning, saved outputs |
-| Financial/document rules | Application TypeScript, Zod, PDFKit, pdf-lib | Integer-cent calculations, acceptance validation, draft generation |
+| Layer                    | Technology                                        | Responsibility                                                                    |
+| ------------------------ | ------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Employee interface       | React 19, TypeScript, Vite, PDF.js, Lucide        | Workspace, projects, assistant, review, document preview                          |
+| Application server       | Node.js, Express, TypeScript                      | Employee sessions, OAuth, validated actions, streaming activity                   |
+| Workflow state           | SQLite and restricted local directories           | Separate chats, proposals, mappings, files and checkpoints per employee/workspace |
+| MCP client               | Official MCP TypeScript SDK, Streamable HTTP, AJV | Per-account connection to Box’s hosted MCP, actual schema validation              |
+| Content and intelligence | Box, Box AI through hosted MCP                    | Project evidence, document extraction and reasoning, saved outputs                |
+| Financial/document rules | Application TypeScript, Zod, PDFKit, pdf-lib      | Integer-cent calculations, acceptance validation, draft generation                |
 
 ```mermaid
 flowchart TB
-    Employee[Clearwave AV employee] --> UI[Company-built React workspace]
-    UI --> API[Express: authenticated employee session]
-    API --> Rules[Application-owned workflow and approval rules]
-    API --> Auth[Per-account Box OAuth credentials]
-    Rules --> State[(State and files by Box user ID + workspace folder ID)]
-    Rules --> PDF[Draft invoice and billing packet generation]
-    Rules --> MCP[Per-account MCP client]
+    Employee["Clearwave AV employee"] --> UI["Company-built React workspace"]
+    UI --> API["Express backend with employee sessions"]
+    API --> Auth["Per-account Box OAuth credentials"]
+    API --> Rules["Workflow validation and human approval"]
+    Rules --> State[("SQLite and local files scoped by employee and workspace")]
+    Rules --> PDF["Draft invoice and packet generation"]
+    Rules --> MCP["Per-account MCP client"]
     Auth --> MCP
-    MCP --> Hosted[Box hosted remote MCP: https://mcp.box.com]
-    Hosted --> Content[(Accessible Box project folders)]
-    Hosted --> AI[Box AI: reasoning and extraction]
-    API -->|Binary bytes via MCP-issued temporary URLs| Content
-    MCP --> Events[Sanitized request-scoped tool activity]
+    MCP --> Hosted["Box hosted MCP at https://mcp.box.com"]
+    Hosted --> ContentStore[("Box project folders and approved outputs")]
+    Hosted --> AI["Box AI reasoning and extraction"]
+    API -->|"Binary transfer through MCP-issued URLs"| ContentStore
+    MCP --> Events["Sanitized tool activity"]
     Events --> UI
 ```
 
@@ -48,7 +50,7 @@ Clearwave’s engineer owns the interface, supported project format, financial c
 
 ## Start locally
 
-Requirements: Node.js 24.12 or later and npm. Development used Node.js 26.
+Requirements: Node.js 26.x (the tested version) and npm. The app uses Node’s built-in SQLite module. Regenerating the upload kit also requires the system `zip` command. Access to this private repository is required to clone it.
 
 ```sh
 git clone https://github.com/box-community/billready.git
@@ -86,11 +88,13 @@ BOX_REDIRECT_URI=http://127.0.0.1:4310/auth/box/callback
 AGENT_PROVIDER=box
 ```
 
-4. Restart the server, open the application and choose **Sign in with Box**. Each employee completes OAuth using their own Box account. One integration client ID and secret serve these individual authorizations; a CCG app is not required.
-5. Browse the employee’s accessible folders, open the desired folder, and select **Use this folder**. Folder selection does not grant or change Box permissions. Account root is available for navigation but cannot be selected as the workflow scope.
+4. Restart the server, open the application and choose **Sign in with Box**. Each employee completes OAuth using their own Box account. One custom MCP integration client ID and secret serve these individual authorizations; a CCG app is not required. This application uses the admin-generated integration credentials, not a separately hosted MCP server.
+5. Browse the employee’s accessible folders, open the desired folder, and select **Use this folder**. For upload and save, the account must already have edit rights to the relevant Acceptance, Billing and Follow-ups folders. Folder selection does not grant or change Box permissions. Account root is available for navigation but cannot be selected as the workflow scope.
 6. The app inventories only the selected subtree, reads supported project records, validates acceptance and displays accessible projects. Unsupported records produce warnings; an empty folder stays empty.
 
 The selection is remembered by verified Box user ID. Changing it updates that account’s active workspace across its sessions. Two employees can select the same shared folder; each retains separate local chats and draft proposals. Cross-account approval coordination reuses saved output IDs for the same Box project and milestones.
+
+For BillReady, enable content read/write (`root_readwrite`) and Box AI (`ai.readwrite`). Doc Gen is not used. Tools disabled by the admin will not appear in discovery; visible tools can still fail because of user permissions or entitlement. Treat the connected server’s tool schemas as authoritative.
 
 Official references: [Box MCP setup](https://developer.box.com/guides/box-mcp/setup), [available tools](https://docs.box.com/en/box-mcp/tools), [OAuth authorization-code flow](https://developer.box.com/guides/authentication/oauth2/without-sdk).
 
@@ -110,28 +114,59 @@ Selected workspace/
         └── 05 Follow-ups/           # Approved follow-up records
 ```
 
-`project.json` must contain a unique business `id`, client/name/shortName, contact/email, owner, hex color, progress, and milestones. Each milestone has an ID/name, integer-cent value and paid amount, complete/issued/accepted/acceptanceRequired booleans, and optional issued date. See the [sample record](demo-kit/upload-to-box/BillReady%20Demo/Projects/CW-101%20Alder%20%26%20Finch/01%20Project%20records/project.json) and [`project-record.ts`](server/project-record.ts). Milestone IDs must be unique; paid amounts cannot exceed their values.
+`project.json` must contain a unique business `id`, client/name/shortName, contact/email, owner, hex color, progress, and milestones. Each milestone has an ID/name, integer-cent value and paid amount, complete/issued/accepted/acceptanceRequired booleans, and optional issued date. See the [sample record](demo-kit/upload-to-box/BillReady%20Demo/Projects/CW-101%20Alder%20%26%20Finch/01%20Project%20records/project.json) and [`project-record.ts`](server/project-record.ts). The [machine-readable schema](demo-kit/configuration/project.schema.json) is generated from the runtime validator. Milestone IDs must be unique; paid amounts cannot exceed their values, and totals must remain safe integers.
 
 The project folder’s Box ID scopes its internal identity, so the same business code in different workspaces is safe. Duplicate business codes within one workspace are rejected as ambiguous. The application accepts one or more supported projects; it does not require all five samples. Discovery is capped at 150 folders; choose a narrower workspace if needed. Folder listings are paginated, and incomplete scans do not replace the last completed inventory.
 
-Keep the [Alder & Finch acceptance PDF](demo-kit/presenter-only/CW-101-signed-acceptance.pdf) outside the active workspace until the upload scene. The broader sample workspace also includes a misplaced Northstar acceptance; initial discovery can verify it immediately. Portfolio totals therefore depend on the accessible projects and actual evidence, rather than a fixed opening number.
+The five supplied sample projects use **Alex Chan** as their project owner. That business assignment is separate from the employee’s authenticated Box identity and the Box folder owner. Legacy sample assignments to Alex Chen or Sam Rivera are normalized in app state and imported sample records; existing Box PDFs keep their original text until you replace them.
+
+Keep the [Alder & Finch acceptance PDF](demo-kit/presenter-only/CW-101-signed-acceptance.pdf) outside the active workspace until the upload scene. The broader sample workspace also includes a misplaced Northstar acceptance; initial discovery can verify it immediately. Portfolio totals therefore depend on the accessible projects and actual evidence, rather than a fixed opening number. The [ground-truth scenarios](demo-kit/configuration/ground-truth.json) distinguish the development seed from the fully verified live tree.
 
 ## How Box MCP is used
 
-| Hosted MCP tool | Application use |
-| --- | --- |
-| `who_am_i` | Verify the signed-in Box user after OAuth |
-| `list_folder_content_by_folder_id` | Browse folders, inventory selected projects, verify saved files |
-| `get_folder_details` | Check selected scope, project access and destinations |
-| `get_file_content` | Read structured project records |
-| `ai_qa_multi_file` | Reason over selected evidence and authoritative application facts; propose constrained actions |
-| `ai_extract_freeform` | Extract acceptance fields for deterministic application validation |
-| `get_upload_url`, `get_download_url` | Issue temporary URLs for binary transfer and preview |
-| `upload_file` | Save text and JSON artifacts in Box |
+| Hosted MCP tool                      | Application use                                                                                |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `who_am_i`                           | Verify the signed-in Box user after OAuth                                                      |
+| `list_folder_content_by_folder_id`   | Browse folders, inventory selected projects, verify saved files                                |
+| `get_folder_details`                 | Check selected scope, project access and destinations                                          |
+| `get_file_content`                   | Read structured project records                                                                |
+| `ai_qa_multi_file`                   | Reason over selected evidence and authoritative application facts; propose constrained actions |
+| `ai_extract_freeform`                | Extract acceptance fields for deterministic application validation                             |
+| `get_upload_url`, `get_download_url` | Issue temporary URLs for binary transfer and preview                                           |
+| `upload_file`                        | Save text and JSON artifacts in Box                                                            |
+| `create_folder`, `move_file`         | Create rehearsal archive batches and move reviewed files during archive reset                  |
 
 `BoxMcpClient` discovers actual `tools/list` schemas, validates explicit arguments, and calls `client.callTool({ name, arguments: args })`. Each employee account has its own connection and token provider. Missing tools, denied access, and unsupported contracts fail visibly; live mode never substitutes simulated success.
 
 For an upload, the server requests an upload URL, transfers actual PDF bytes, verifies the file in Box, and calls Box AI extraction. Application rules check client, business project code, milestone, affirmative acceptance, signer and date before recalculating readiness. The browser receives the result and updated state.
+
+```mermaid
+sequenceDiagram
+    actor Employee
+    participant UI as BillReady browser
+    participant App as BillReady backend
+    participant BoxMCP as Box hosted MCP
+    participant ContentStore as Box file transfer endpoint
+    Employee->>UI: Upload signed acceptance
+    UI->>App: PDF bytes and selected project
+    App->>BoxMCP: get_upload_url with folder, name and byte size
+    BoxMCP-->>App: Temporary transfer URL and optional upload token
+    App->>ContentStore: Transfer actual PDF bytes
+    ContentStore-->>App: Uploaded file ID
+    App->>BoxMCP: List destination to verify upload
+    App->>BoxMCP: ai_extract_freeform with the file ID
+    BoxMCP-->>App: Extracted acceptance facts
+    App->>App: Validate facts and calculate readiness
+    App-->>UI: Updated evidence and billing amounts
+    Employee->>UI: Review and approve the draft package
+    UI->>App: Explicit approval
+    App->>App: Generate draft invoice and billing packet
+    App->>BoxMCP: get_upload_url for each PDF
+    App->>ContentStore: Transfer generated PDF bytes
+    App->>BoxMCP: upload_file for email draft artifacts
+    App->>BoxMCP: Verify saved outputs in the Billing folder
+    App-->>UI: Saved package links and handoff actions
+```
 
 The assistant’s conversation history is application-owned. Box AI proposes only `answer`, `discover`, `followup`, or `billing`; code validates the project and action. Chat cannot approve outputs or invoke arbitrary tools. Approval saves draft PDFs and email artifacts without issuing an invoice, sending email, recording payment, or changing sharing.
 
@@ -147,17 +182,17 @@ Expand **Box MCP activity** beside a chat response or upload to inspect actual t
 - The legacy `data/box-oauth.json` and shared `data/live` database are left untouched and are not migrated or used by employee sessions. `BOX_MCP_TOKEN` is disabled and `BOX_DEMO_ROOT_ID` does not select employee workspaces.
 - Shared internal folders are supported. Destinations with shared links remain blocked; the app does not create links or change collaborations.
 
-| Configuration | Purpose |
-| --- | --- |
-| `BILLREADY_ADAPTER` | `development` or `live` |
-| `PORT`, `BOX_REDIRECT_URI` | Local listener and exactly registered callback |
-| `BOX_CLIENT_ID`, `BOX_CLIENT_SECRET` | Server-side custom integration credentials |
-| `BOX_MCP_URL` | Must be `https://mcp.box.com` |
-| `AGENT_PROVIDER` | `box` by default; optional `openai` needs its own key/model |
-| `EMPLOYEE_AUTH_FILE` | Override the restricted per-account credential store |
-| `EMPLOYEE_DATA_DIR` | Override per-employee/workspace state and receipt directory |
-| `DATA_DIR` | Development/legacy command-line state only |
-| `DEMO_DATE` | Reference date for sample documents and acceptance validation |
+| Configuration                        | Purpose                                                       |
+| ------------------------------------ | ------------------------------------------------------------- |
+| `BILLREADY_ADAPTER`                  | `development` or `live`                                       |
+| `PORT`, `BOX_REDIRECT_URI`           | Local listener and exactly registered callback                |
+| `BOX_CLIENT_ID`, `BOX_CLIENT_SECRET` | Server-side custom integration credentials                    |
+| `BOX_MCP_URL`                        | Must be `https://mcp.box.com`                                 |
+| `AGENT_PROVIDER`                     | `box` by default; optional `openai` needs its own key/model   |
+| `EMPLOYEE_AUTH_FILE`                 | Override the restricted per-account credential store          |
+| `EMPLOYEE_DATA_DIR`                  | Override per-employee/workspace state and receipt directory   |
+| `DATA_DIR`                           | Development/legacy command-line state only                    |
+| `DEMO_DATE`                          | Reference date for sample documents and acceptance validation |
 
 ## Walkthrough and verification
 
@@ -170,8 +205,22 @@ npm run build
 
 Tests include isolated OAuth callbacks, two-account visibility, credential refresh, per-account state and traces, denied ID guesses, permission loss, empty/unsupported workspaces, upload streams, PDF review, repeated approval and shared-project output reuse. These use controlled fixtures, not two real employee accounts. See [verification and limits](docs/verification.md).
 
-In development, `npm run reset` previews the local reset and `npm run reset -- --apply` applies it. In live mode, either command prints a link to the authenticated reset preview at `http://127.0.0.1:4310/#reset`; keep the app running. You can also open **Connection & diagnostics → Preview workspace reset**. Review the files, then choose **Archive files & reset workspace**. The command does not automatically authorize a remote write.
+## Reset options
 
-Live reset supports the included Clearwave sample projects. It archives non-baseline files in Acceptance, Billing and Follow-ups through Box MCP, verifies moves, preserves the canonical sample files and OAuth credentials, and rebuilds readiness from actual remaining evidence. An interrupted archive can be previewed and retried. No Box files are deleted. The selected shared Box folder is affected for all collaborators; local state for that folder refreshes on next use, while other folders are untouched. For faster repeated Alder & Finch rehearsals, manually remove the acceptance and generated billing/follow-up files, then use [Quick reset after Box cleanup](http://127.0.0.1:4310/#reset-clean). This checks relevant folders and clears local state without Box writes, full discovery or Box AI. See the [reset guide](demo-kit/RESET.md). Legacy authenticated command-line inspection scripts do not inherit browser employee sessions.
+| Mode                                 | Entry point                                                                             | Behavior                                                                                                           |
+| ------------------------------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Quick reset after manual Box cleanup | [Quick reset](http://127.0.0.1:4310/#reset-clean) or `npm run reset -- --after-cleanup` | Check Alder & Finch’s relevant folders, then clear local rehearsal state. No Box writes, full-tree scan or Box AI. |
+| Archive and reset                    | [Archive reset](http://127.0.0.1:4310/#reset) or `npm run reset`                        | Preview extra rehearsal files, then explicitly approve archiving and workspace restoration through MCP.            |
+| Local development                    | `npm run reset`, then `npm run reset -- --apply`                                        | Preview, then restore the development adapter’s local state. Stop its server before applying.                      |
+
+Live commands print an authenticated browser link; even `--apply` does not bypass the browser confirmation. Keep the server running. If OAuth returns you to Overview, reopen the reset link after sign-in.
+
+Quick reset requires a workspace that has already been synchronized. First remove the uploaded proof from Alder & Finch’s `03 Acceptance`, the invoice/packet/email files from `04 Billing`, and generated follow-ups from `05 Follow-ups`. Keep README files and original source records. The app refuses incomplete cleanup. It restores Alder & Finch to **$0 ready / $18,000 blocked**, retains other project amounts and clears workspace chats/drafts. Other sessions using that Box workspace rebuild stale local state on next use.
+
+Archive reset supports the included sample projects. It archives non-baseline files from Acceptance, Billing and Follow-ups, verifies the moves, preserves original source files and credentials, and restores readiness using current file revisions. It does not delete Box files or change sharing. Shared-folder collaborators see those same archive changes. See the [reset guide](demo-kit/RESET.md) for scope and recovery.
+
+First-time discovery can take longer because it lists project folders, reads records and verifies acceptance. Cached reads do not wait behind the mutation queue; project requests check their own project, while overview access checks run in bounded batches. These are scoped checks, not a guarantee that all requests are instant. No live timing benchmark is published.
+
+The older `test:e2e`, `test:live-view` and `box:inspect` scripts are retained for maintenance. The browser harnesses still contain pre-refactor selectors, and CLI inspection does not inherit employee browser sessions. They are not part of the current verified setup path; use the in-app tool details and the checks above.
 
 Useful entry points: [`auth.ts`](server/auth.ts), [`context.ts`](server/context.ts), [`box-mcp.ts`](server/box-mcp.ts), [`box-content.ts`](server/box-content.ts), [`workflow.ts`](server/workflow.ts), and [`store.ts`](server/store.ts).

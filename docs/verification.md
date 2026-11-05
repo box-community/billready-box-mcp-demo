@@ -1,97 +1,52 @@
-# Verification record
+# Verification and current limits
 
+This record distinguishes automated fixtures, rendered UI checks and real Box operations. Earlier results are retained in [verification history](verification-history.md); they are not current setup instructions.
 
-## Invoice preview path regression — November 4, 2026
+## Current automated baseline
 
-- Fixed employee storage paths to resolve absolutely for both the default directory and relative overrides. The previous relative path reached Express `sendFile`, which requires an absolute path; tests previously masked this by using an absolute temporary directory.
-- The employee HTTP suite now runs with a relative storage override and checks successful PDF responses. A separate regression covers default, relative and absolute directory settings. **43 tests pass** and production build passes.
-- The PDF viewer now reads API error responses, displays the actual failure reason, supports retry and cancels abandoned fetches. Existing credentials and the physical workspace data location are unchanged.
+The latest application verification passed **43 tests** with `npm test` and passed the TypeScript/Vite production build with `npm run build` on Node.js 26. These checks were run during the employee-workspace, reset and preview changes. Documentation-only checks are reported separately below.
 
+| Area                   | Verified with fixtures or local checks                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Employee OAuth         | State/cookie validation, identity binding, isolated credentials, token refresh and sign-out                                                       |
+| Workspace isolation    | Different project sets for two accounts, shared projects, scoped chats/state/files/traces, rejected cross-account IDs                             |
+| Discovery              | Paginated listings, bounded concurrency, subsets, unsupported/empty workspaces, duplicate-code rejection and incomplete scans                     |
+| Billing rules          | Exact integer-cent totals, missing/wrong-project/unsigned evidence remaining blocked, valid acceptance unlocking only its milestone               |
+| Saving                 | Explicit approval, four output files, retry checkpoints and shared-project output reuse without issuing invoices                                  |
+| Reset                  | File preview, stale-list rejection, interruption/retry, archive verification, preserved source documents and other workspaces                     |
+| Quick reset            | Manual deletion simulated outside the app, remaining-file rejection, scoped folder reads, zero Box writes/AI and restored $18,000 blocker         |
+| Performance boundaries | Cached state reads complete while the mutation queue is held; changed evidence is revalidated and unchanged verified file revisions may be reused |
+| PDF preview            | Default/relative/absolute storage paths, authenticated HTTP PDF bytes, readable viewer errors and retry                                           |
+| Trace handling         | Sanitized request-scoped activity, credentials/temporary URLs removed, streamed updates and failure handling                                      |
 
-## Manual-cleanup quick reset — November 4, 2026
+All five supplied sample owners and generated project records were checked as **Alex Chan**. Legacy sample-owner normalization and preservation of unrelated project owners were checked locally. Regenerating the kit does not overwrite content already in Box.
 
-- Added an authenticated endpoint before broad discovery middleware and a separate `#reset-clean` view that does not fetch inventory on mount. It checks the signed-in account’s selected workspace, verifies project ancestry, lists Alder & Finch’s relevant folders, refuses remaining rehearsal files and clears local state without moving/deleting Box files or using Box AI.
-- Cached reads now validate access outside the mutation queue; project requests check only their own project, and overview permission checks run in batches of up to four. Missing mappings still initialize through a guarded mutation queue.
-- **42 tests pass** and production build passes. Tests assert no Box writes, no AI extraction, four folder-list calls for the standard hero layout, rejection of leftover output files and anonymous calls, and that cached state reads complete while the mutation queue is deliberately held. Fixtures do not establish real-world reset timing.
+## Rendered interface checks
 
+The employee sign-in, folder selection, overview, project detail, readable MCP parameters/results, full-page invoice preview and saved-package handoff were inspected in the browser. A 390px iframe exercised responsive layout; that is not a physical mobile-device test. The fixed PDF preview was rendered with a relative employee-storage override, reproducing the configuration that previously failed.
 
-## Reset performance — November 4, 2026
+The retained Playwright harnesses still reference old selectors and are not the current verified browser-test path. Do not interpret `npm run test:e2e` or `npm run test:live-view` as freshly passing evidence.
 
-- Removed three redundant full-tree inventories from preview/apply, bounded folder reads at four in parallel, and reused the fresh inventory for archiving and local reconstruction. Each archive move still has read-back verification, followed by checks of affected source folders.
-- Stored Box file ETags allow reuse of acceptance validation only for an unchanged revision. Changed or unversioned remaining acceptance is revalidated; no reset marks unverified evidence accepted.
-- **41 automated tests pass**, including one inventory during apply, no extra AI extraction when removing proof, bounded parallel reads, unchanged revision reuse and changed unsigned acceptance remaining blocked. Production build passed. Timing and writes were verified with controlled fixtures; no live Box reset was applied for this optimization.
+## Real Box checks completed
 
+- A real employee completed OAuth and the hosted MCP `who_am_i` identity check.
+- The folder browser used that account’s accessible Box content. Selecting the existing sample workspace discovered five project records and validated existing acceptance through Box MCP/Box AI.
+- A real project chat completed through `ai_qa_multi_file`; its source IDs, instructions, duration and structured result were inspected in the activity UI.
+- Reauthentication restored the remembered workspace selection. Account switching and selection do not remove existing Box documents.
 
-## Authenticated workspace reset — November 4, 2026
+Earlier revisions also exercised live uploads, output saves and archive restoration. Those are historical results, documented separately; current reset and preview regression work used isolated fixtures rather than new live mutations.
 
-- `npm run reset` in live mode exits successfully with the account-bound browser preview link; it does not read legacy credentials or archive files on its own. Local development retains the existing preview/`--apply` behavior.
-- All **40 automated tests** pass. Reset tests cover anonymous rejection, selected-folder scope, baseline preservation, stale preview rejection, an interruption after a successful move, retry without losing archived files, restoration of Alder & Finch’s $18,000 blocker, preservation of another Box workspace and sign-in, and invalidation of a collaborator’s local state for the same reset folder.
-- Build/type checking passed. Browser fixture verification covered the listed-file preview, archive/reset confirmation, stable completion message and return to the blocked project. Archive/create/move operations used isolated fixtures; no live Box files were moved or deleted while implementing this feature.
+## Remaining limits
 
-## Employee workspaces — November 4, 2026
+- Real simultaneous two-account verification needs a second authorized employee account. Fixture isolation checks do not replace it.
+- No current live reset-duration benchmark is published. First-time discovery still inventories the selected subtree and verifies evidence; unchanged cached views are a separate path.
+- The optional OpenAI conversation provider has not been live-verified. The default Box AI provider does not need an OpenAI key.
+- No webhook or accounting-system integration exists. External file additions need explicit evidence refresh. The app does not issue invoices, send emails, record payments or change sharing.
+- Sessions are in memory and expire after eight hours. The app runs on loopback in one Node.js process; public or distributed deployment needs separate hardening and shared session/coordination infrastructure.
+- A legacy CLI inspection command does not inherit employee browser authentication.
 
-- `npm test`: **39 passing tests**, including controlled two-account OAuth, separate folder lists, shared project access, single-flight token refresh, scoped SQLite/files/traces, anonymous and cross-account ID rejection, permission loss, empty/unsupported/duplicate project discovery, and interrupted scans retaining the last complete inventory.
-- The isolated HTTP workflow exercised acceptance PDF upload with streamed MCP/transfer events, extraction before readiness changes, PDF invoice preview, four saved output artifacts, repeated approval, and two employees approving the same Box project with identical output IDs. These are fixtures; no live Box files were created by them.
-- `npm run build` and whitespace checks passed. Browser inspection covered sign-in, folder selection, discovered project counts, project detail, readable MCP parameters/results, fitted invoice review and saved-package handoff. A 390px iframe exercised responsive rendering; this was not a physical mobile-device test.
-- A real employee OAuth sign-in succeeded as Chris Kim (`chriskim@boxdemo.com`). The folder browser used that account’s Box content; selecting the existing workspace `429787316757` discovered five project records and validated existing acceptance through hosted Box MCP/Box AI. The result was $58,000 ready, $0 blocked, $242,000 invoiced and $12,000 outstanding, reflecting documents already in Box. Selection does not reset those documents.
-- Live assistant verification exposed a business-code versus folder-scoped-ID mismatch. The resolver now accepts a business code only when it uniquely identifies an accessible project; tests verify ambiguity and cross-project rejection. The final live assistant recheck passed after reauthentication: the remembered workspace was restored, `ai_qa_multi_file` completed, and its actual source IDs, instructions, duration and structured response were inspected in the UI.
-- Real simultaneous two-account verification remains unavailable without a second authorized employee account. Fixture coverage is not a substitute for that check.
-- The legacy shared token file and database were not migrated, reset or assigned to an employee. No Box sharing, deletion or archive operation was performed. Video files and projects were not edited.
+## Documentation validation
 
-BillReady was verified on October 21, 2026 with Node.js 26 and Chrome. These results describe the implementation rehearsal; each new installation still needs its own Box authorization and root configuration. Raw account-specific reports remain local and are excluded from the repository.
+The November 4 documentation review checked **17 Markdown files and 60 local links/anchors**, with no missing targets. Mermaid CLI 11.17.1 reproduced the old reserved `Box` participant error and successfully rendered both replacement README diagrams. The published project JSON Schema matches the runtime validator, all five sample records validate, and all 35 upload ZIP files match their canonical sources. The generator now emits real Markdown line breaks.
 
-## Workflow UX verification — October 29, 2026
-
-- Build and 25 tests pass, including upload SSE parsing, customer document visibility, rejection of technical manifests as attachments, and a fixture proving the MCP upload URL → binary transfer → folder read-back → AI extraction sequence occurs before readiness changes. No live Box content was mutated by these tests.
-- Isolated development HTTP upload checks rejected wrong-project proof and accepted matching proof; the new streaming route retained exact totals. Browser checks confirmed the upload progress and before/after amounts, clean attachment choices, and approval transitioning directly into the handoff view.
-- The current live saved package was inspected read-only in the browser: customer-facing download/email actions are present, and the complete draft invoice renders in the fitted viewer. Copy/mail-app actions require an explicit user click; launching an external mail application and sending were not automated.
-- The fitted viewer is lazy-loaded. Raw JSON is available only in developer trace detail; internal files remain in storage/presenter controls.
-
-## Refactor verification — October 28, 2026
-
-- Current build/type checks and **20 automated tests** passed. Regression tests use isolated temporary stores and fixtures: missing acceptance stays blocked; wrong-project/unsigned evidence cannot unlock billing; matching signed evidence unlocks only its milestone; discovery reports verified state; owner approval and repeated saves remain protected; SDK errors and traces redact credentials; unknown providers and missing live auth fail visibly. Cached-validator and offset-pagination checks passed.
-- An isolated development HTTP workflow passed through actual Express routes: missing discovery, wrong-project upload, correct upload and upload retry, review proposal, rejection without explicit approval, four saved draft files, repeated approval without duplicates, and unchanged invoiced/outstanding totals. This is fixture verification, not a live Box mutation test.
-- Read-only checks using the refactored official MCP SDK client discovered **51 hosted tools**, called `who_am_i`, verified/listed the configured root, and obtained a Box AI `answer` plan explaining the current $18,000 blocker. No live files were uploaded, moved, deleted, or reset for this refactor. OAuth token refresh remains part of normal authentication.
-- The live application and expandable activity panel were inspected in the browser after a new read-only chat request: tool names, timing, selected file IDs, and actual request parameters remain visible. Detailed signed transfer output and failure scenarios are covered by fixtures rather than new live transfers.
-- The video project, credential configuration, and Box permissions were not changed. The optional OpenAI conversation provider was preserved but was not exercised against a live OpenAI account in this refactor.
-
-The following sections preserve the earlier implementation verification; they are historical checks, not claims of new live mutation testing.
-
-## Automated checks
-
-- TypeScript checking and Vite production build passed.
-- Ten automated tests passed, covering exact-cents reconciliation, acceptance matching, incomplete/issued/duplicate billing protection, generated PDFs, approval idempotency, discovery, external refresh, MCP schema validation, transfer URL scoping, and source linking for a ready seed project.
-- A complete Chrome workflow passed in the isolated development store: investigate sources, reject wrong acceptance, edit and save a follow-up, upload correct acceptance, review invoice/email/attachments, approve, reload, retry without duplicates, preview/download, discover misplaced evidence, navigate/search, and inspect mobile chat/layout.
-- Read-only live rendering passed at desktop 1600 × 1000 and mobile 390 × 844. The portfolio table scrolls within its card without horizontal page overflow.
-- All 14 source/presenter PDFs were rendered and checked as one-page documents. The upload ZIP was checked to exclude presenter acceptance, credentials, dependencies, generated drafts, and runtime state.
-
-## Actual remote Box verification
-
-These checks used real Box OAuth, Box hosted remote MCP, and Box AI, rather than the development adapter:
-
-1. Authorized the authorized user, retrieved 50 actual remote tool schemas, and mapped the scoped five-project tree containing 27 original seed files.
-2. Used Box AI Q&A for conversation and freeform extraction for acceptance evidence. Wrong-project acceptance stayed blocked; valid hero acceptance moved $18,000 into ready billing.
-3. Prepared and approved an editable follow-up in its mapped Follow-ups folder.
-4. Reviewed and saved four actual Billing outputs: draft invoice PDF, assembled packet PDF, email JSON, and email text.
-5. Downloaded those saved Box artifacts through the app and confirmed DRAFT, $18,000, $0 tax, Net 30, and required attachments. Reload retained the package; repeated approval created no duplicates.
-6. Discovered and validated Northstar's misplaced acceptance, producing $58,000 ready and $0 blocked. Issued remained $242,000 and outstanding remained $12,000.
-7. Added a separately tracked acceptance directly through MCP; explicit UI refresh found it without double counting.
-8. Updated source PDF versions while preserving original Box file IDs, then archived eight recorded rehearsal artifacts through MCP reset. No remote files were deleted; all original seed IDs remained active.
-9. Confirmed reset restored $24,000 ready / $34,000 blocked, no active hero acceptance, empty proposals and conversations, and archive exclusion from evidence.
-
-No check issued an invoice, recorded a payment, sent an email, or created an external share.
-
-## Limits
-
-The optional OpenAI provider has not been live-tested. It is unnecessary for the default Box AI agent. OAuth refresh is implemented and serialized, but a deliberately expired-session refresh was not forced during the rehearsal. External sync is explicit refresh, with no webhook. This application is intended for a single application owner on loopback; multi-user deployment and accounting integrations are outside its scope.
-
-## Rendered application
-
-![Live project detail](images/project.png)
-
-<details>
-<summary>Mobile overview</summary>
-
-![Live mobile overview](images/mobile.png)
-
-</details>
+The renderer was installed only in a temporary validation directory; it is not an application dependency. The application’s 43 tests and production build also passed during this review. Official Box setup/tool references were checked against the current vendor documentation and are linked from the README. See the [developer walkthrough](BOX_MCP_WALKTHROUGH.md) and [troubleshooting guide](TROUBLESHOOTING.md).
