@@ -1,49 +1,71 @@
-# Clearwave AV employee workflow walkthrough
+# BillReady: five-minute live presentation
 
-## The story
+The story is a Clearwave AV engineer customizing the company’s Box experience for colleagues. All customer records, amounts and signatures are fictional.
 
-“An engineer at Clearwave AV built this workspace for the operations team. The team already keeps project records in Box. Using Box MCP and Box AI, the engineer made a custom interface that shows what can be billed, checks missing evidence, and prepares documents for review.”
+## Before presenting
 
-## 1. Sign in and choose a workspace
+- Complete [setup](SETUP.md), sign in with the intended Box account and select the workspace. Keep the server running to preserve the browser session.
+- Complete [reset](RESET.md) and confirm **Alder & Finch: $0 ready / $18,000 blocked**. For repeat runs, manual Box cleanup plus quick reset avoids archive processing.
+- Keep [the signed acceptance PDF](presenter-only/CW-101-signed-acceptance.pdf) available outside the active Box workspace until upload.
+- Use the live adapter when showing remote MCP calls. Identify local development honestly if using it instead.
+- Check the fitted PDF preview and required tools before the session. All five sample project owners are Alex Chan; your signed-in Box identity remains your actual account.
+- Do not promise a fixed portfolio opening. First-time live discovery can already verify Northstar’s acceptance. With the full clean kit verified, the overview may show $40,000 ready / $18,000 blocked; local development starts at $24,000 / $34,000 before discovery.
 
-Open http://127.0.0.1:4310. Show **Sign in with Box**, then choose an accessible workspace folder. Point out the actual employee identity and **Workspace projects** list.
+## 0:00–0:40 · Explain the custom Box experience
 
-Explain: “This is my Box account and the project content I can access. A colleague can sign in with their own account and choose their workspace. Shared projects can appear for both of us.”
+**Show:** Clearwave AV’s overview, employee identity and workspace selection.
 
-Use a fresh sample workspace with Alder & Finch’s signed acceptance kept outside it, or complete one of the [reset flows](RESET.md). The quick manual-cleanup route is the shortest repeat-run path. Initial portfolio totals depend on accessible projects and verified evidence. Do not promise a fixed five-project opening total.
+**Say:**
 
-The five sample projects are assigned to **Alex Chan**. This is the business owner field, not a claim about who owns the Box folder or which account is signed in.
+> An engineer at Clearwave AV built this internal workspace for the operations team. Their project documents already live in Box. Box MCP connects the custom application to that content, and Box AI helps interpret the evidence.
 
-## 2. Identify the billing blocker
+> I sign in with my own Box account and choose a folder. The app shows supported projects I can access, including shared folders.
 
-Open **Alder & Finch**. The final M3 milestone represents $18,000 of completed work that requires customer acceptance. Ask **What is preventing us from billing?**
+Avoid switching accounts during the timed flow unless both real test accounts have been rehearsed. Different permissions or selected folders produce different lists; shared access can produce the same list.
 
-Show supporting document links and **Open project in Box**. Explain that the documents stay in Box while the custom UI surfaces the team’s workflow.
+## 0:40–1:25 · Find the billing blocker
 
-Expand **Box MCP activity**. Show a tool’s actual name, parameters, status and result. Collapse it before continuing.
+Open **Alder & Finch** and ask **What is preventing us from billing?** Show the agreement and completion-report source links.
 
-## 3. Upload customer proof
+**Say:**
 
-Choose **Upload acceptance** and select `presenter-only/CW-101-signed-acceptance.pdf`.
+> The work is complete, but the final $18,000 milestone requires signed customer acceptance. This view connects the billing condition to the actual project evidence.
 
-Follow the visible upload stages. Explain: “The app requests a transfer URL through Box MCP, saves the PDF, verifies it in Box and asks Box AI to extract the acceptance details. Application rules check the client, project, milestone, signature and date.”
+Briefly expand **Box MCP activity**, then one call’s parameter/result fields. Collapse it to continue. An optional **Draft a customer follow-up.** step can show editable copy and Alex Chan as the follow-up owner; skip it if response latency would crowd the upload scene.
 
-Show the actual tool details, then the updated project amounts: **$18,000 ready / $0 blocked**. The UI changes only after matching evidence passes validation. Issued invoices and unpaid balances do not change.
+## 1:25–2:25 · Upload and verify acceptance
 
-## 4. Review and prepare the package
+Select **Upload acceptance** and choose `presenter-only/CW-101-signed-acceptance.pdf`.
 
-Ask **Prepare the draft invoice.** Open **Review billing package** and show the fitted invoice preview, evidence attachments and editable email.
+**Say:**
 
-Choose **Approve & save**. Show the saved-package handoff: draft invoice, supporting billing packet, copyable email and **Open email app**. Explain that the employee finalizes the invoice in their billing system, attaches the downloaded documents and sends the email themselves.
+> The app requests a transfer URL through Box MCP, uploads the PDF, verifies the saved file and asks Box AI to extract acceptance facts. Our code checks the client, project, milestone, signature, affirmative acceptance and date before updating readiness.
 
-Open the saved outputs in Box. Approval saves drafts; it does not issue invoices or send messages. Repeated approval reuses the saved files.
+Show the actual upload activity and project amounts changing to **$18,000 ready / $0 blocked**. Explain the difference between an MCP call, binary transfer and application validation. Issued totals and unpaid issued balances do not change.
 
-## 5. Close on customization
+If the full live kit started at $40,000 ready / $18,000 blocked, it becomes $58,000 / $0 after this upload. Use the project amounts if the selected workspace contains different projects or evidence.
 
-“Clearwave’s engineer defined this interface and the billing rules. Box MCP connects those actions to each employee’s permitted content, and Box AI helps interpret the evidence. The same approach lets companies build Box experiences around their own teams and processes.”
+## 2:25–4:15 · Review and save the package
 
-If two real test accounts are available, sign out and repeat folder selection with the second account to show its own project list. Never present fixture accounts or local development activity as live Box access.
+Ask **Prepare the draft invoice.** Open **Review billing package**.
 
-## Optional developer explanation
+1. Show the complete fitted invoice page: `DRAFT-CW-101-M3`, $18,000, zero-tax sample assumption and Net 30 from issue.
+2. Show **Evidence & attachments** and **Email & follow-up**. Edit the copy if useful.
+3. Choose **Approve & save**.
+4. Show the saved-package handoff and a link to the real outputs in Box.
 
-Use the [three-stop code walkthrough](../docs/BOX_MCP_WALKTHROUGH.md): hosted connection and tool discovery → actual `client.callTool()` → extraction followed by application validation. Skip credentials and reset internals during the main presentation. A timed version is in [Five-minute live demo](FIVE_MINUTE_LIVE_DEMO.md).
+**Say:**
+
+> The employee reviews the package before anything is saved. Approval stores draft invoice and packet PDFs plus email artifacts in Box. They then finalize the invoice in their billing system, attach downloaded files and send the email from their email application.
+
+The four stored files are two PDFs plus email JSON/text. The ordinary handoff shows useful document/email actions; employees do not need to inspect the JSON. Opening the email application fills text only and does not attach files or send the message.
+
+## 4:15–5:00 · Connect the result to the developer story
+
+If time allows, show the central execution point in [`callBoxTool()`](../server/box-mcp.ts) and the corresponding expanded call in the UI. Use the [code walkthrough](../docs/BOX_MCP_WALKTHROUGH.md) for details.
+
+**Close:**
+
+> Clearwave’s engineer defined the interface, billing rules and approval steps. Box MCP connects that workflow to each employee’s permitted documents, and Box AI helps interpret the evidence. That is how a company can build its own experience on top of Box.
+
+Northstar discovery is optional Q&A material. Its acceptance is already in the original project records and may have been verified during initial synchronization; do not stage it as a fresh reveal unless the actual starting state supports that claim.

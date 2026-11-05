@@ -631,7 +631,7 @@ export function transferInfo(r: any): { url: string; token?: string } {
     }
   }
   throw Error(
-    "Upload URL response not recognized. Use box:inspect to verify transfer contract.",
+    "Upload URL response not recognized. Inspect the tool result in Box MCP activity to verify the transfer contract.",
   );
 }
 export const remote = new RemoteBox();

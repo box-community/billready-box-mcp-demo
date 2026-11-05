@@ -1,6 +1,6 @@
 # Verification and current limits
 
-This record distinguishes automated fixtures, rendered UI checks and real Box operations. Earlier results are retained in [verification history](verification-history.md); they are not current setup instructions.
+This record distinguishes automated fixtures, rendered UI checks and real Box operations. This document records the maintained application checks; outdated scripts and historical screenshots have been removed.
 
 ## Current automated baseline
 
@@ -25,7 +25,7 @@ All five supplied sample owners and generated project records were checked as **
 
 The employee sign-in, folder selection, overview, project detail, readable MCP parameters/results, full-page invoice preview and saved-package handoff were inspected in the browser. A 390px iframe exercised responsive layout; that is not a physical mobile-device test. The fixed PDF preview was rendered with a relative employee-storage override, reproducing the configuration that previously failed.
 
-The retained Playwright harnesses still reference old selectors and are not the current verified browser-test path. Do not interpret `npm run test:e2e` or `npm run test:live-view` as freshly passing evidence.
+Browser inspections described here were manual checks, not an automated browser suite.
 
 ## Real Box checks completed
 
@@ -34,7 +34,7 @@ The retained Playwright harnesses still reference old selectors and are not the 
 - A real project chat completed through `ai_qa_multi_file`; its source IDs, instructions, duration and structured result were inspected in the activity UI.
 - Reauthentication restored the remembered workspace selection. Account switching and selection do not remove existing Box documents.
 
-Earlier revisions also exercised live uploads, output saves and archive restoration. Those are historical results, documented separately; current reset and preview regression work used isolated fixtures rather than new live mutations.
+Earlier revisions also exercised live uploads, output saves and archive restoration. Those are historical results; current reset and preview regression work used isolated fixtures rather than new live mutations.
 
 ## Remaining limits
 
