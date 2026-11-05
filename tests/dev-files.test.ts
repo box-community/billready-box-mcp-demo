@@ -32,6 +32,9 @@ test("Vite blocks private runtime files, including custom storage and raw import
   }
   const server = await createServer({
     envFile: false,
+    // This test checks file access, not dependency prebundling. Avoid background
+    // optimizer work racing server shutdown on a fresh dependency installation.
+    optimizeDeps: { noDiscovery: true, include: [] },
     logLevel: "silent",
     server: {
       host: "127.0.0.1",
