@@ -62,6 +62,10 @@ export function proposals() {
     put("proposals", updated);
   return updated;
 }
+/**
+ * Extract facts from project PDFs, then apply deterministic acceptance rules.
+ * Only validated evidence marks a milestone accepted; financial totals remain local calculations.
+ */
 export async function reassess(pid: string, docs: Doc[]) {
   let p = projects().find((x) => x.id === pid);
   if (!p) throw Error("Unknown project");
@@ -301,6 +305,11 @@ export async function previewInvoice(proposal: Proposal) {
   return f;
 }
 const approvalQueues = new Map<string, Promise<unknown>>();
+/**
+ * Serialize approvals for the same Box project/milestones within this Node process.
+ * Shared receipts and per-file checkpoints let employees reuse verified saved outputs.
+ * Approval saves drafts to Box; it does not issue an invoice or send customer email.
+ */
 export async function approve(id: string) {
   const proposal = proposals().find((p) => p.id === id);
   if (!proposal) throw Error("Proposal not found");

@@ -6,7 +6,11 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { boxToken, hasBoxAuth } from "./auth.ts";
 import { traceCall, sanitizeTrace } from "./tracing.ts";
 
-// One reusable connection to Box's hosted server. No local MCP server or REST fallback.
+/**
+ * MCP client for Box's hosted server at https://mcp.box.com.
+ * Employee middleware supplies one instance and token provider per Box user;
+ * the SDK is the client transport, not a locally hosted Box MCP server.
+ */
 export class BoxMcpClient {
   constructor(private tokenProvider = boxToken) {}
   client?: Client;
@@ -15,6 +19,7 @@ export class BoxMcpClient {
   private validators = new Map<string, ValidateFunction>();
   private ajv = new Ajv({ strict: false, allErrors: true });
 
+  /** Reuse the connection and share an in-flight handshake across concurrent calls. */
   async connect() {
     if (this.client) return;
     this.connecting ??= this.open().finally(() => {
@@ -23,6 +28,10 @@ export class BoxMcpClient {
     return this.connecting;
   }
 
+  /**
+   * Authenticate the HTTP transport, then discover every page of remote tool schemas.
+   * Fetching the token for each request lets OAuth refresh work on a reused connection.
+   */
   private async open() {
     if (this.tokenProvider === boxToken && !hasBoxAuth())
       throw Error(
@@ -73,6 +82,10 @@ export class BoxMcpClient {
     }
   }
 
+  /**
+   * Execute a named Box tool with arguments checked against its discovered schema.
+   * This single execution point records sanitized activity for the live demo UI.
+   */
   async callBoxTool(name: string, args: Record<string, unknown>) {
     await this.connect();
     const tool = this.tools.find((tool) => tool.name === name);
@@ -103,7 +116,7 @@ export class BoxMcpClient {
   }
 }
 
-// Box tools return either structured content or text blocks containing JSON/text.
+/** Normalize structured results and JSON/text blocks without assuming one tool response format. */
 function unpackToolResult(result: any): any {
   if (result.structuredContent) return result.structuredContent;
   const texts =
@@ -118,6 +131,8 @@ function unpackToolResult(result: any): any {
   }
 }
 const legacyClient = new BoxMcpClient();
+// Resolve the client from the server-side request context, never a browser-supplied user ID.
+// Employee requests use their own client; the legacy instance cannot supply live shared credentials.
 export const boxMcp = new Proxy(legacyClient, {
   get(_target, key) {
     const scope = currentEmployee();

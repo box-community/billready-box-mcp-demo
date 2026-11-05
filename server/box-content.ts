@@ -6,8 +6,12 @@ import { get, put, type Doc } from "./store.ts";
 import { traceCall } from "./tracing.ts";
 export const ARCHIVE_NAME = "BillReady Rehearsal Archive";
 
-// Scoped Box content operations. Only the MCP client knows the transport and schemas.
+/**
+ * Map billing workflows onto the current employee's accessible Box folders and files.
+ * Tool calls go through BoxMcpClient; binary transfers use URLs issued by those tools.
+ */
 export class RemoteBox {
+  /** Read every folder page; an incomplete inventory must not imply evidence is missing. */
   async list(folderId: string) {
     const entries: any[] = [];
     let offset = 0;
@@ -136,6 +140,11 @@ export class RemoteBox {
     );
     return out;
   }
+  /**
+   * Inventory only the selected workspace, with bounded folder reads and traversal.
+   * Validate structured project records and scope project IDs to their Box folders;
+   * unsupported content produces warnings rather than sample-project fallback.
+   */
   async discoverEmployee() {
     const scope = requireEmployee(),
       root = scope.workspace?.id;
@@ -322,6 +331,7 @@ export class RemoteBox {
     );
     return docs;
   }
+  /** Recheck Box access before cached content is used, clearing inaccessible workspace/project state. */
   async verifyAccess(projectId?: string) {
     const scope = requireEmployee();
     if (!scope.workspace) return;
@@ -465,6 +475,11 @@ export class RemoteBox {
     }
     return receipts;
   }
+  /**
+   * Save to a mapped, permitted destination and verify the resulting file by listing it.
+   * Text artifacts use upload_file; PDFs use get_upload_url followed by a separate
+   * multipart byte transfer. Stable names let retries reuse an existing remote file.
+   */
   async persist(bytes: Buffer, name: string, pid: string, category: string) {
     if (
       get("mappedRoot", "") !==
@@ -583,6 +598,7 @@ function extractId(r: any): string {
     );
   return String(id);
 }
+/** Accept only HTTPS Box transfer hosts before following an MCP-issued upload/download URL. */
 export function safeTransferUrl(s: string) {
   const u = new URL(s);
   if (

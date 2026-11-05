@@ -208,6 +208,11 @@ export const acceptanceSchema = z
   })
   .strict();
 export type Acceptance = z.infer<typeof acceptanceSchema>;
+/**
+ * Treat AI extraction as evidence, not approval: match client/project/milestone,
+ * completed delivery, signed affirmative acceptance, and a date no later than DEMO_DATE.
+ * Return a readable blocker, or null when the extracted facts pass these checks.
+ */
 export function validateAcceptance(a: Acceptance, p: Project, m: Milestone) {
   if (!m.complete)
     return "Delivery is not recorded complete for this milestone. Acceptance requires review.";

@@ -80,6 +80,11 @@ export async function documentText(d: Doc) {
     ? (await parsePdf(fs.readFileSync(d.path))).text
     : fs.readFileSync(d.path, "utf8");
 }
+/**
+ * Ask Box AI through MCP to extract acceptance facts from this actual Box file ID.
+ * Schema validation checks the response shape; workflow/domain code decides whether
+ * those facts satisfy billing rules. Development mode uses local fixture parsing.
+ */
 export async function analyze(d: Doc): Promise<Acceptance> {
   if (mode === "live") {
     if (!d.boxId) throw Error("No Box file ID");
@@ -209,6 +214,7 @@ export async function refreshDocuments() {
   );
   return documents();
 }
+/** Retrieve mapped document bytes through an MCP-issued URL, tracing the transfer separately. */
 export async function previewBytes(d: Doc) {
   if (mode !== "live") return fs.readFileSync(d.path!);
   if (!d.boxId || !get<string[]>("allowedFiles", []).includes(d.boxId))

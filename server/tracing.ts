@@ -35,6 +35,7 @@ export const trace: Trace[] = new Proxy(legacyTrace, {
   },
 });
 let sequence = 0;
+/** Remove credentials and temporary URLs, and bound result size before activity reaches the UI. */
 export function sanitizeTrace(value: unknown): unknown {
   const secrets = ["BOX_CLIENT_SECRET", "BOX_MCP_TOKEN", "OPENAI_API_KEY"]
     .map((k) => process.env[k])
@@ -106,6 +107,10 @@ export function log(tool: string, detail: string) {
   if (trace.length > 150) trace.shift();
   publish(entry);
 }
+/**
+ * Publish running/completed/failed activity around real execution, including timing
+ * and sanitized parameters/results. Keep MCP calls distinct from binary transfers.
+ */
 export async function traceCall<T>(
   tool: string,
   parameters: unknown,

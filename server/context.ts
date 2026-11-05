@@ -10,6 +10,7 @@ export type EmployeeContext = {
   traces: Trace[];
   assertActive: () => void;
 };
+// Carry server-verified identity across async calls without a process-wide "current user".
 export const employeeContext = new AsyncLocalStorage<EmployeeContext>();
 export const currentEmployee = () => employeeContext.getStore();
 export function requireEmployee() {

@@ -86,6 +86,7 @@ export async function boxToken(): Promise<string> {
     "Authorize Box using employee sign-in. Shared tokens are disabled.",
   );
 }
+/** Exchange an OAuth code or refresh token server-side; credentials never go to the UI. */
 async function exchange(values: Record<string, string>): Promise<Token> {
   if (!process.env.BOX_CLIENT_ID || !process.env.BOX_CLIENT_SECRET)
     throw Error("Configure BOX_CLIENT_ID and BOX_CLIENT_SECRET first.");
@@ -114,6 +115,11 @@ async function exchange(values: Record<string, string>): Promise<Token> {
     expires_at: Date.now() + Number(data.expires_in || 3600) * 1000,
   };
 }
+/**
+ * Supply the current access token for one verified Box account.
+ * Share one refresh promise per account so concurrent sessions do not race Box's
+ * rotating refresh token; persist the replacement before subsequent requests use it.
+ */
 async function accountToken(id: string) {
   const account = accounts.get(id);
   if (!account)
@@ -147,6 +153,10 @@ export function sessionInfo(req: Request) {
     workspace: s?.account.workspace || null,
   };
 }
+/**
+ * Bind an authenticated request to its Box user, selected workspace and MCP client.
+ * The active-session guard also rejects ongoing work after sign-out or a workspace change.
+ */
 export async function employeeMiddleware(
   req: Request,
   res: Response,
@@ -206,6 +216,10 @@ export function selectWorkspace(req: Request, workspace: Workspace) {
 function invalidate(req: Request) {
   sessions.delete(cookie(req));
 }
+/**
+ * Register employee OAuth and session routes. Bind state to the initiating browser,
+ * resolve identity through hosted MCP, then issue a new opaque session cookie.
+ */
 export function authRoutes(app: Express) {
   const redirect =
     process.env.BOX_REDIRECT_URI ||
@@ -283,6 +297,7 @@ export function authRoutes(app: Express) {
       redirect_uri: redirect,
     });
     const { BoxMcpClient } = await import("./box-mcp.ts");
+    // Ask Box who authorized this token before using a user ID as the credential-storage key.
     const identityClient = new BoxMcpClient(async () => token.access_token);
     let raw: any;
     try {

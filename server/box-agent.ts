@@ -69,6 +69,10 @@ Do not include a separate attachment list in the body; the application renders i
 Body should read naturally, use the provided project contact, and refer to the draft package without claiming an invoice was issued or email sent.
 Return ONLY JSON with this shape: {"action":"answer|discover|followup|billing","projectId":"exact provided internal project ID including its folder suffix, or null","answer":"concise natural-language response","draft":null or {"subject":"email subject","body":"email draft"},"sourceFileIds":["actual supporting file IDs"]}.`;
 
+/**
+ * Ground chat in a bounded set of mapped Box source files via ai_qa_multi_file.
+ * Supply authoritative billing facts and validate the returned action plan before execution.
+ */
 export async function planWithBoxAI(
   context: string,
   text: string,
@@ -141,7 +145,10 @@ export async function boxChat(
   );
 }
 
-// AI may propose only these actions; application rules and owner approval decide what happens.
+/**
+ * Dispatch only supported AI-proposed actions within the current project scope.
+ * Billing/follow-up actions prepare reviewable proposals; saving requires employee approval.
+ */
 export async function executeAllowedPlan(
   context: string,
   result: Awaited<ReturnType<typeof planWithBoxAI>>,
