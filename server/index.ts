@@ -134,18 +134,46 @@ app.use("/api", async (req, res, next) => {
     });
   try {
     if (!get("initialized", false)) initialize([]);
-    const requestedProject = req.path.match(
-      /^\/(?:projects|chat)\/([^/]+)/,
-    )?.[1];
-    await remote.verifyAccess(
-      requestedProject && requestedProject !== "overview"
-        ? decodeURIComponent(requestedProject)
-        : undefined,
-    );
-    if (!get("mappedRoot", ""))
+    // A fresh workspace needs one full discovery before a deep-linked project
+    // can be resolved. Subsequent project requests never broaden their refresh.
+    if (!get("mappedRoot", "")) {
+      await remote.verifyAccess();
       await serial(async () => {
         if (!get("mappedRoot", "")) await discover();
       });
+    }
+    const routeProject = req.path.match(/^\/(?:projects|chat)\/([^/]+)/)?.[1];
+    const proposal = req.path.match(/^\/proposals\/([^/]+)/)?.[1];
+    const document = req.path.match(/^\/documents\/([^/]+)/)?.[1];
+    // Resolve action targets from server-owned records. The state query narrows
+    // access checks for a project page without changing workspace navigation data.
+    const requestedProject = routeProject
+      ? decodeURIComponent(routeProject)
+      : proposal
+        ? proposals().find((p) => p.id === decodeURIComponent(proposal))
+            ?.projectId
+        : document
+          ? documents().find((d) => d.id === decodeURIComponent(document))
+              ?.projectId
+          : req.path === "/refresh"
+            ? req.body.projectId
+            : req.path === "/state"
+              ? req.query.projectId
+              : undefined;
+    if (
+      requestedProject &&
+      requestedProject !== "overview" &&
+      (typeof requestedProject !== "string" ||
+        !projects().some((p) => p.id === requestedProject))
+    )
+      return res
+        .status(404)
+        .json({ error: "Project not found in your workspace." });
+    await remote.verifyAccess(
+      requestedProject && requestedProject !== "overview"
+        ? requestedProject
+        : undefined,
+    );
     const project = req.path.match(/^\/projects\/([^/]+)/)?.[1];
     const chatContext = req.path.match(/^\/chat\/([^/]+)/)?.[1];
     const context = decodeURIComponent(project || chatContext || "overview");

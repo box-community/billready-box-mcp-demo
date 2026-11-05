@@ -217,7 +217,11 @@ function App({
   activeContext.current = context;
   async function load() {
     try {
-      const next = await api("/state");
+      const next = await api(
+        project
+          ? `/state?projectId=${encodeURIComponent(project.id)}`
+          : "/state",
+      );
       setState(next);
       const selected = location.hash.slice(1);
       if (
@@ -385,7 +389,7 @@ function App({
         },
       );
       setUploadState("Validating evidence and updating billing…");
-      const updated = await api("/state");
+      const updated = await api(`/state?projectId=${encodeURIComponent(pid)}`);
       setState(updated);
       setProofRun((run) =>
         run

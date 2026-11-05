@@ -4,7 +4,7 @@ This record distinguishes automated fixtures, rendered UI checks and real Box op
 
 ## Current automated baseline
 
-The latest application verification passed **44 tests** with `npm test` and passed the TypeScript/Vite production build with `npm run build` on Node.js 26. These checks were run during the employee-workspace, reset and preview changes. Documentation-only checks are reported separately below.
+The latest application verification passed **45 tests** with `npm test` and passed the TypeScript/Vite production build with `npm run build` on Node.js 26. These checks were run during the employee-workspace, reset and preview changes. Documentation-only checks are reported separately below.
 
 | Area                   | Verified with fixtures or local checks                                                                                                            |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -54,3 +54,7 @@ The renderer was installed only in a temporary validation directory; it is not a
 ## Public-release preparation
 
 The [public-release review](PUBLIC_RELEASE_REVIEW.md) records the history/asset scans, privacy decision, development-file-serving fix and its new regression test. The current local suite has 44 passing tests; the older dated counts above describe earlier verification runs.
+
+## Project-scoped MCP operations
+
+A two-project fixture verifies that project chat discovery, project refresh, and project-page state reads stay inside the selected Box subtree. A matching-looking acceptance in a sibling folder is not inspected. Missing, changed, or failed project inventory does not trigger workspace fallback; sibling projects and documents remain intact. Upload, invoice preview and approval also assert project-only folder calls. These are fixture checks; no live Box files were changed for this regression.

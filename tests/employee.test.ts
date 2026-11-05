@@ -250,7 +250,11 @@ BoxMcpClient.prototype.callBoxTool = async function (tool, args) {
     }
     if (tool === "ai_qa_multi_file")
       return {
-        action: "billing",
+        action: String(args.question).includes(
+          "User request: Find missing acceptance\n",
+        )
+          ? "discover"
+          : "billing",
         projectId: "CW-101",
         answer: "Review the draft billing package.",
         draft: null,
@@ -397,6 +401,8 @@ test("employee OAuth and workspace workflow isolates accounts and enforces curre
     await t.test(
       "same business code in separate folders has different scoped IDs, no seeded extras",
       async () => {
+        // Deep links must still initialize a newly selected workspace before resolving the project.
+        assert.equal((await a.request("/api/chat/CW-101~210")).status, 200);
         [sa, sb] = await Promise.all([a.state(), b.state()]);
         assert.deepEqual(
           sa.projects.map((p: any) => p.id),
@@ -411,6 +417,136 @@ test("employee OAuth and workspace workflow isolates accounts and enforces curre
         assert.equal(refreshes["101"], 1);
         assert.equal(refreshes["102"], 1);
         assert.equal(fs.existsSync(process.env.DATA_DIR!), false);
+      },
+    );
+    await t.test(
+      "project discovery and page reads stay in one Box subtree and preserve sibling state",
+      async () => {
+        records["220"] = seedProjects()[1];
+        roots["200"].push("220");
+        const pid = "CW-101~210";
+        const previousAiCalls = aiCalls;
+        const assertScoped = (calls: typeof transcript) => {
+          assert.ok(calls.length > 0);
+          for (const call of calls) {
+            const folder = call.args.folder_id || call.args.parent_folder_id;
+            if (folder)
+              assert.ok(String(folder).startsWith("210"), JSON.stringify(call));
+            if (call.args.file_id)
+              assert.ok(String(call.args.file_id).startsWith("210"));
+            if (call.args.file_ids)
+              assert.ok(
+                call.args.file_ids.every(
+                  (id: string) => id.startsWith("210") || id === "799998",
+                ),
+              );
+          }
+        };
+        try {
+          assert.equal((await a.post("/api/refresh", {})).status, 200);
+          const before = await a.state();
+          const sibling = before.projects.find(
+            (p: any) => p.id === "CW-102~220",
+          );
+          assert.ok(sibling);
+          const siblingDocs = before.documents.filter(
+            (d: any) => d.projectId === sibling.id,
+          );
+          // A matching-looking acceptance in another project must not be inspected.
+          uploaded.set("799997", {
+            id: "799997",
+            name: "CW-101-signed-acceptance.pdf",
+            folder: "2203",
+            bytes: Buffer.from("%PDF-fixture"),
+          });
+          const absentStart = transcript.length;
+          const absent = await a.post("/api/chat/" + pid, {
+            text: "Find missing acceptance",
+          });
+          assert.equal(absent.status, 200);
+          assert.match(
+            (await absent.json()).text,
+            /did not find verified signed acceptance/,
+          );
+          assertScoped(transcript.slice(absentStart));
+          uploaded.set("799998", {
+            id: "799998",
+            name: "misplaced-signed-acceptance.pdf",
+            folder: "2101",
+            bytes: Buffer.from("%PDF-fixture"),
+          });
+          const start = transcript.length;
+          const response = await a.post("/api/chat/" + pid, {
+            text: "Find missing acceptance",
+          });
+          assert.equal(response.status, 200, await response.clone().text());
+          assertScoped(transcript.slice(start));
+          let count = transcript.length;
+          const page = await a.request("/api/state?projectId=" + pid);
+          assert.equal(page.status, 200);
+          const state = await page.json();
+          assertScoped(transcript.slice(count));
+          assert.equal(
+            state.projects.find((p: any) => p.id === pid).billing.ready,
+            1800000,
+          );
+          assert.deepEqual(
+            state.projects.find((p: any) => p.id === sibling.id),
+            sibling,
+          );
+          assert.deepEqual(
+            state.documents.filter((d: any) => d.projectId === sibling.id),
+            siblingDocs,
+          );
+          uploaded.delete("799998");
+          count = transcript.length;
+          assert.equal(
+            (await a.post("/api/refresh", { projectId: pid })).status,
+            200,
+          );
+          assertScoped(transcript.slice(count));
+          const missing = await (
+            await a.request("/api/state?projectId=" + pid)
+          ).json();
+          assert.equal(
+            missing.projects.find((p: any) => p.id === pid).billing.blocked,
+            1800000,
+          );
+          const originalRecord = records["210"];
+          records["210"] = { ...originalRecord, id: "CHANGED" };
+          count = transcript.length;
+          try {
+            assert.equal(
+              (await a.post("/api/refresh", { projectId: pid })).status,
+              400,
+            );
+            assertScoped(transcript.slice(count));
+          } finally {
+            records["210"] = originalRecord;
+          }
+          failListing = true;
+          count = transcript.length;
+          assert.equal(
+            (await a.post("/api/refresh", { projectId: pid })).status,
+            400,
+          );
+          assertScoped(transcript.slice(count));
+          failListing = false;
+          const retained = await a.state();
+          assert.equal(retained.projects.length, 2);
+          assert.deepEqual(
+            retained.projects.find((p: any) => p.id === sibling.id),
+            sibling,
+          );
+        } finally {
+          failListing = false;
+          uploaded.delete("799998");
+          uploaded.delete("799997");
+          roots["200"] = ["210"];
+          delete records["220"];
+          assert.equal((await a.post("/api/refresh", {})).status, 200);
+          aiCalls = previousAiCalls;
+        }
       },
     );
     await t.test(
@@ -434,6 +570,7 @@ test("employee OAuth and workspace workflow isolates accounts and enforces curre
     await t.test(
       "validated upload streams MCP calls and updates only the uploader workspace",
       async () => {
+        const scopedStart = transcript.length;
         const form = new FormData();
         form.set(
           "file",
@@ -455,6 +592,10 @@ test("employee OAuth and workspace workflow isolates accounts and enforces curre
         assert.match(body, /"tool":"get_upload_url"/);
         assert.match(body, /"tool":"binary_upload"/);
         assert.match(body, /"tool":"ai_extract_freeform"/);
+        for (const call of transcript.slice(scopedStart)) {
+          const folder = call.args.folder_id || call.args.parent_folder_id;
+          if (folder) assert.ok(String(folder).startsWith("210"));
+        }
         assert.match(body, /"valid":true/);
         assert.equal((await a.state()).totals.ready, 1800000);
         assert.equal((await b.state()).totals.ready, 0);
@@ -464,6 +605,7 @@ test("employee OAuth and workspace workflow isolates accounts and enforces curre
     await t.test(
       "review and concurrent repeated approval save four artifacts without issuing invoices",
       async () => {
+        const scopedStart = transcript.length;
         const response = await a.post("/api/chat/CW-101~210", {
           text: "Prepare the draft invoice.",
         });
@@ -493,6 +635,10 @@ test("employee OAuth and workspace workflow isolates accounts and enforces curre
         assert.equal(first.status, 200, await first.clone().text());
         assert.equal(second.status, 200, await second.clone().text());
         const saved = await first.json();
+        for (const call of transcript.slice(scopedStart)) {
+          const folder = call.args.folder_id || call.args.parent_folder_id;
+          if (folder) assert.ok(String(folder).startsWith("210"));
+        }
         assert.equal(saved.savedIds.length, 4);
         assert.deepEqual((await second.json()).savedIds, saved.savedIds);
         assert.equal(

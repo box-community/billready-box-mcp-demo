@@ -1,5 +1,6 @@
 import { currentEmployee, requireEmployee, workspaceRoot } from "./context.ts";
 import { projects } from "./store.ts";
+import type { Project } from "./domain.ts";
 import { projectRecord } from "./project-record.ts";
 import { boxMcp } from "./box-mcp.ts";
 import { get, put, type Doc } from "./store.ts";
@@ -52,8 +53,10 @@ export class RemoteBox {
     } while (true);
     return entries;
   }
-  async discover() {
-    if (currentEmployee()) return this.discoverEmployee();
+  async discover(projectId?: string) {
+    if (currentEmployee()) return this.discoverEmployee(projectId);
+    if (projectId)
+      throw Error("Project discovery requires an employee workspace.");
     const root = process.env.BOX_DEMO_ROOT_ID;
     if (!root || root === "0" || !/^\d+$/.test(root))
       throw Error(
@@ -141,15 +144,36 @@ export class RemoteBox {
     return out;
   }
   /**
-   * Inventory only the selected workspace, with bounded folder reads and traversal.
-   * Validate structured project records and scope project IDs to their Box folders;
-   * unsupported content produces warnings rather than sample-project fallback.
+   * Inventory the selected project subtree, or the workspace for an explicit full refresh.
+   * A project refresh never reads sibling folders or falls back to workspace discovery.
+   * Validate project records and commit only a complete inventory, preserving other projects.
    */
-  async discoverEmployee() {
+  async discoverEmployee(projectId?: string) {
     const scope = requireEmployee(),
-      root = scope.workspace?.id;
-    if (!root) throw Error("Choose a workspace folder first.");
-    await boxMcp.callBoxTool("get_folder_details", { folder_id: root });
+      workspace = scope.workspace?.id;
+    if (!workspace) throw Error("Choose a workspace folder first.");
+    const selected = projectId
+      ? projects().find((p) => p.id === projectId)
+      : undefined;
+    if (
+      projectId &&
+      (!selected?.folderId || get("mappedRoot", "") !== workspace)
+    )
+      throw Error(
+        "Project is not mapped in this workspace. Refresh from the overview.",
+      );
+    const root = selected?.folderId || workspace;
+    const details = await boxMcp.callBoxTool("get_folder_details", {
+      folder_id: root,
+      fields: ["id", "name", "path_collection"],
+    });
+    if (
+      selected &&
+      !(
+        details?.path_collection?.entries || details?.pathCollection?.entries
+      )?.some((e: any) => String(e.id) === workspace)
+    )
+      throw Error("Project folder is no longer inside the selected workspace.");
     const files: (Doc & { ancestors: string[] })[] = [];
     const folders: { id: string; name: string; ancestors: string[] }[] = [];
     const warnings: string[] = [];
@@ -221,7 +245,7 @@ export class RemoteBox {
     await walk(root, [root], []);
     files.sort((a, b) => a.id.localeCompare(b.id));
     const mapped: Record<string, string> = {},
-      discovered = [],
+      discovered: Project[] = [],
       seen = new Set<string>();
     for (const file of files.filter((f) => f.name === "project.json")) {
       const parent = folders.find((f) => f.id === file.folderId);
@@ -309,22 +333,48 @@ export class RemoteBox {
         folders.some((x) => x.id === f.folderId && x.name === "Company"),
     );
     const docs = visible.map(({ ancestors, ...d }) => d);
-    put(
-      "projects",
-      discovered.sort((a, b) => a.businessId.localeCompare(b.businessId)),
-    );
-    put("mappedRoot", root);
-    put("boxFolders", mapped);
-    put("allowedFolders", [root, ...Object.values(mapped)]);
-    put(
-      "allowedFiles",
-      docs.map((d) => d.boxId),
-    );
-    put("discovery", {
-      status: discovered.length ? "ready" : "empty",
-      warnings,
-    });
-    const ids = new Set(discovered.map((p) => p.id));
+    // Commit a project refresh only after a complete, valid inventory. Keep other
+    // projects and their evidence untouched; never fall back to a broader search.
+    if (
+      projectId &&
+      (discovered.length !== 1 || discovered[0].id !== projectId)
+    )
+      throw Error(
+        "Project record changed or is unsupported. Refresh from the overview.",
+      );
+    const updatedProjects = projectId
+      ? projects().map((p) => (p.id === projectId ? discovered[0] : p))
+      : discovered.sort((a, b) =>
+          (a.businessId || a.id).localeCompare(b.businessId || b.id),
+        );
+    const updatedMappings = projectId
+      ? {
+          ...Object.fromEntries(
+            Object.entries(
+              get<Record<string, string>>("boxFolders", {}),
+            ).filter(([key]) => !key.startsWith(projectId + "/")),
+          ),
+          ...mapped,
+        }
+      : mapped;
+    put("projects", updatedProjects);
+    put("mappedRoot", workspace);
+    put("boxFolders", updatedMappings);
+    put("allowedFolders", [workspace, ...Object.values(updatedMappings)]);
+    put("allowedFiles", [
+      ...(projectId
+        ? get<Doc[]>("documents", [])
+            .filter((d) => d.projectId !== projectId)
+            .map((d) => d.boxId)
+        : []),
+      ...docs.map((d) => d.boxId),
+    ]);
+    if (!projectId)
+      put("discovery", {
+        status: discovered.length ? "ready" : "empty",
+        warnings,
+      });
+    const ids = new Set(updatedProjects.map((p) => p.id));
     put(
       "proposals",
       get<any[]>("proposals", []).filter((p) => ids.has(p.projectId)),
@@ -336,9 +386,10 @@ export class RemoteBox {
     const scope = requireEmployee();
     if (!scope.workspace) return;
     try {
-      await boxMcp.callBoxTool("get_folder_details", {
-        folder_id: scope.workspace.id,
-      });
+      if (!projectId)
+        await boxMcp.callBoxTool("get_folder_details", {
+          folder_id: scope.workspace.id,
+        });
     } catch (e) {
       for (const p of projects()) put("chat:" + p.id, []);
       put("projects", []);
@@ -369,9 +420,17 @@ export class RemoteBox {
       await Promise.all(
         visible.slice(i, i + 4).map(async (p) => {
           try {
-            await boxMcp.callBoxTool("get_folder_details", {
+            const details = await boxMcp.callBoxTool("get_folder_details", {
               folder_id: p.folderId!,
+              fields: ["id", "name", "path_collection"],
             });
+            if (
+              !(
+                details?.path_collection?.entries ||
+                details?.pathCollection?.entries
+              )?.some((e: any) => String(e.id) === scope.workspace!.id)
+            )
+              throw Error("403 project moved outside the selected workspace");
           } catch (e) {
             if (!/403|404|forbidden|not.found|access.denied/i.test(String(e)))
               throw e;
