@@ -124,7 +124,7 @@ export async function reassess(pid: string, docs: Doc[]) {
   return results;
 }
 export async function discover(pid?: string) {
-  await refreshDocuments();
+  await refreshDocuments(pid);
   const ids = pid ? [pid] : projects().map((p) => p.id);
   const results = [];
   for (const id of ids) {

@@ -174,22 +174,29 @@ export async function persistFile(
     generated: true,
   };
 }
-export async function refreshDocuments() {
+export async function refreshDocuments(projectId?: string) {
   if (mode === "live") {
-    const found = await remote.discover();
+    const found = await remote.discover(projectId);
     const prior = documents();
     const merged = found.map((d) => ({
       ...prior.find((old) => old.boxId === d.boxId),
       ...d,
     }));
-    put("documents", merged);
-    return merged;
+    const updated = projectId
+      ? [...prior.filter((d) => d.projectId !== projectId), ...merged]
+      : merged;
+    put("documents", updated);
+    return updated;
   }
   const known = documents();
   const extra = path.join(storageDir(), "external-inbox");
   fs.mkdirSync(extra, { recursive: true });
   for (const e of fs.readdirSync(extra, { withFileTypes: true })) {
-    if (e.isDirectory() && /^CW-10[1-5]$/.test(e.name)) {
+    if (
+      e.isDirectory() &&
+      /^CW-10[1-5]$/.test(e.name) &&
+      (!projectId || e.name === projectId)
+    ) {
       for (const name of fs.readdirSync(path.join(extra, e.name))) {
         const f = path.join(extra, e.name, name);
         if (!fs.statSync(f).isFile() || !name.endsWith(".pdf")) continue;

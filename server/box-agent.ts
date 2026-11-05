@@ -79,6 +79,8 @@ export async function planWithBoxAI(
   history: Message[],
 ) {
   const p = projects().find((x) => x.id === context);
+  if (context !== "overview" && !p)
+    throw Error("Project not found in this workspace.");
   let docs = documents().filter(
     (d) =>
       d.boxId &&
@@ -92,7 +94,7 @@ export async function planWithBoxAI(
           ))),
   );
   if (!docs.length) {
-    await refreshDocuments();
+    await refreshDocuments(p?.id);
     docs = documents().filter(
       (d) =>
         d.boxId &&
