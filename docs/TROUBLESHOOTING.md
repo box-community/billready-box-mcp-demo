@@ -69,3 +69,9 @@ The recommended automated checks are `npm test` and `npm run build`; their scope
 ## Local credentials appear to be ignored
 
 Environment variables inherited by the process take precedence over `.env` under the current dotenv setup. Launch the app from a shell with the intended integration configuration. Check variable names and configuration source without printing secret values. Never paste `.env`, OAuth codes, session cookies or token-store contents into a bug report.
+
+## Workspace access warning with zero projects
+
+An access failure is different from an empty workspace. Use **Retry workspace** or refresh the page. Once Box access succeeds, the app rediscovers projects automatically, including recovery from the old persisted inaccessible state. Sign in again if the local server restarted and the browser session expired.
+
+Temporary MCP/network failures and rate limits return a connection-check error without erasing cached project data. Actual folder permission loss blocks access and clears affected local state. The diagnostics retain sanitized failure details; never share credentials or raw customer content when reporting the error.

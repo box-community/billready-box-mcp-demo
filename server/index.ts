@@ -136,10 +136,19 @@ app.use("/api", async (req, res, next) => {
     if (!get("initialized", false)) initialize([]);
     // A fresh workspace needs one full discovery before a deep-linked project
     // can be resolved. Subsequent project requests never broaden their refresh.
-    if (!get("mappedRoot", "")) {
+    if (
+      !get("mappedRoot", "") ||
+      get<{ status: string }>("discovery", { status: "ready" }).status ===
+        "inaccessible"
+    ) {
       await remote.verifyAccess();
       await serial(async () => {
-        if (!get("mappedRoot", "")) await discover();
+        if (
+          !get("mappedRoot", "") ||
+          get<{ status: string }>("discovery", { status: "ready" }).status ===
+            "inaccessible"
+        )
+          await discover();
       });
     }
     const routeProject = req.path.match(/^\/(?:projects|chat)\/([^/]+)/)?.[1];

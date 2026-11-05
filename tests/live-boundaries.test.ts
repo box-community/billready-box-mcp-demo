@@ -256,3 +256,92 @@ test("proof upload traces actual MCP request, binary transfer, read-back and ext
     else process.env.BOX_DEMO_ROOT_ID = oldRoot;
   }
 });
+
+test("only explicit Box content denial invalidates cached access", async () => {
+  const { isBoxAccessDenied } = await import("../server/box-access.ts");
+  for (const message of ["403 access denied", "404 not_found", "Forbidden"])
+    assert.equal(isBoxAccessDenied(Error(message)), true);
+  for (const message of [
+    "session not found (404)",
+    "connection reset",
+    "Request timed out",
+    "429 rate limit",
+    "503 service unavailable",
+    "401 token expired",
+    "unexpected response",
+  ])
+    assert.equal(isBoxAccessDenied(Error(message)), false);
+  assert.equal(
+    isBoxAccessDenied({ status: 401, message: "access denied" }),
+    false,
+  );
+});
+
+test("expired MCP transport reconnects on explicit retry without replaying the failed call", async () => {
+  const client = new BoxMcpClient();
+  client.tools = schemas;
+  let calls = 0,
+    closes = 0,
+    reconnects = 0;
+  const original = {
+    callTool: async () => {
+      calls++;
+      throw Error("HTTP 404 session not found");
+    },
+    close: async () => {
+      closes++;
+    },
+  };
+  client.client = original as any;
+  client.connect = async () => {
+    if (!client.client) {
+      reconnects++;
+      client.tools = schemas;
+      client.client = {
+        callTool: async () => {
+          calls++;
+          return { structuredContent: { answer: "restored" } };
+        },
+      } as any;
+    }
+  };
+  await assert.rejects(
+    () =>
+      client.callBoxTool("ai_qa_multi_file", {
+        file_ids: ["123"],
+        question: "Check evidence",
+      }),
+    /MCP session unavailable/,
+  );
+  assert.equal(calls, 1);
+  assert.equal(closes, 1);
+  assert.equal(client.client, undefined);
+  assert.deepEqual(
+    await client.callBoxTool("ai_qa_multi_file", {
+      file_ids: ["123"],
+      question: "Check evidence",
+    }),
+    { answer: "restored" },
+  );
+  assert.equal(reconnects, 1);
+  assert.equal(calls, 2);
+  const connected = Reflect.get(client, "client");
+  connected!.callTool = async () =>
+    ({
+      isError: true,
+      content: [{ type: "text", text: "404 file not found" }],
+    }) as any;
+  await assert.rejects(
+    () =>
+      client.callBoxTool("ai_qa_multi_file", {
+        file_ids: ["123"],
+        question: "Check evidence",
+      }),
+    /404/,
+  );
+  assert.equal(
+    client.client,
+    connected,
+    "a content error must not discard the transport",
+  );
+});

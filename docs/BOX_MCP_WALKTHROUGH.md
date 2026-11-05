@@ -17,7 +17,7 @@ For account isolation, show [`employeeMiddleware()`](../server/auth.ts), which o
 In [`callBoxTool()`](../server/box-mcp.ts), highlight this actual SDK call:
 
 ```ts
-const result = await this.client!.callTool({ name, arguments: args });
+const result = await activeClient.callTool({ name, arguments: args });
 ```
 
 Say: “Call sites provide a tool name and structured arguments. We validate those against Box’s discovered schema, execute the remote call, then sanitize the trace for the UI.”

@@ -104,13 +104,36 @@ export class BoxMcpClient {
         `Invalid arguments for ${name}: ${this.ajv.errorsText(validate.errors)}`,
       );
     return traceCall(name, args, async () => {
+      const activeClient = this.client!;
+      let toolError = false;
       try {
         // This is the single SDK execution point shown in the live activity panel.
-        const result = await this.client!.callTool({ name, arguments: args });
-        if (result.isError) throw Error(JSON.stringify(sanitizeTrace(result)));
+        const result = await activeClient.callTool({ name, arguments: args });
+        if (result.isError) {
+          toolError = true;
+          throw Error(JSON.stringify(sanitizeTrace(result)));
+        }
         return unpackToolResult(result);
       } catch (error) {
-        throw Error(String(sanitizeTrace((error as Error).message)));
+        const message = (error as Error).message;
+        // A stale hosted MCP session is a transport failure, not a missing Box folder.
+        // Reconnect on the next explicit attempt; never silently replay a possible write.
+        if (
+          !toolError &&
+          /\b404\b|session.*(?:expired|invalid|not.found)/i.test(message)
+        ) {
+          if (this.client === activeClient) {
+            this.client = undefined;
+            this.tools = [];
+            this.validators.clear();
+            await activeClient.close?.().catch(() => {});
+          }
+          throw Error(
+            "MCP session unavailable. Retry to reconnect. " +
+              String(sanitizeTrace(message)),
+          );
+        }
+        throw Error(String(sanitizeTrace(message)));
       }
     });
   }
