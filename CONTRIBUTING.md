@@ -14,7 +14,7 @@ npm run build
 npm audit
 ```
 
-The default tests use fixtures, including OAuth and MCP responses. They do not prove live two-account access. Legacy Playwright harnesses are described in [verification notes](docs/verification.md) and are not part of the passing default suite.
+The default tests use fixtures, including OAuth and MCP responses. They do not prove live two-account access. See [verification notes](docs/verification.md) for what the current automated and manual checks cover.
 
 ## Changes and reports
 

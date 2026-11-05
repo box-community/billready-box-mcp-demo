@@ -62,9 +62,9 @@ BillReady needs `get_upload_url` and `get_download_url` for binary transfer. Arc
 
 ## Old CLI authentication or browser-test instructions fail
 
-`BOX_MCP_TOKEN`, `BOX_TOKEN_FILE` and `BOX_DEMO_ROOT_ID` are legacy single-account configuration, not employee-session setup. Use browser OAuth and workspace selection. The legacy `box:inspect` command cannot reuse a browser cookie or the employee credential store automatically.
+`BOX_MCP_TOKEN`, `BOX_TOKEN_FILE` and `BOX_DEMO_ROOT_ID` are legacy single-account configuration, not employee-session setup. Use browser OAuth and workspace selection. Use the in-app Box MCP activity viewer to inspect calls under the signed-in employee session.
 
-The retained Playwright harnesses contain older UI selectors. The current recommended automated checks are `npm test` and `npm run build`; their scope is documented in [Verification](verification.md). A fixture pass does not prove access for a second real Box account.
+The recommended automated checks are `npm test` and `npm run build`; their scope is documented in [Verification](verification.md). A fixture pass does not prove access for a second real Box account.
 
 ## Local credentials appear to be ignored
 

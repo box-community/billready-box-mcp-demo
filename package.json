@@ -9,10 +9,7 @@
     "start": "NODE_ENV=production tsx server/index.ts",
     "kit": "tsx scripts/generate-kit.ts",
     "test": "tsx --test tests/domain.test.ts tests/adapter.test.ts tests/tracing.test.ts tests/live-boundaries.test.ts tests/ui-contracts.test.ts tests/employee.test.ts tests/dev-files.test.ts",
-    "test:e2e": "playwright test",
-    "reset": "tsx scripts/reset.ts",
-    "box:inspect": "tsx scripts/inspect-box.ts",
-    "test:live-view": "playwright test --config playwright.live.config.ts"
+    "reset": "tsx scripts/reset.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -30,7 +27,6 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@playwright/test": "^1.55.0",
     "@types/express": "^5.0.0",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.0.0",

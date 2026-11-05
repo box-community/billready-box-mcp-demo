@@ -230,7 +230,7 @@ Archive reset supports the included sample projects. It archives non-baseline fi
 
 First-time discovery can take longer because it lists project folders, reads records and verifies acceptance. Cached reads do not wait behind the mutation queue; project requests check their own project, while overview access checks run in bounded batches. These are scoped checks, not a guarantee that all requests are instant. No live timing benchmark is published.
 
-The older `test:e2e`, `test:live-view` and `box:inspect` scripts are retained for maintenance. The browser harnesses still contain pre-refactor selectors, and CLI inspection does not inherit employee browser sessions. They are not part of the current verified setup path; use the in-app tool details and the checks above.
+Use the in-app Box MCP activity viewer to inspect live tools and results. The automated suite uses controlled fixtures; live employee OAuth and folder permissions need verification with authorized Box accounts.
 
 Useful entry points: [`auth.ts`](server/auth.ts), [`context.ts`](server/context.ts), [`box-mcp.ts`](server/box-mcp.ts), [`box-content.ts`](server/box-content.ts), [`workflow.ts`](server/workflow.ts), and [`store.ts`](server/store.ts).
 
