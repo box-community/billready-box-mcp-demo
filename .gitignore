@@ -13,3 +13,10 @@ verification/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+
+# Local recordings, logs, and private key material.
+/output/
+*.log
+*.pem
+*.key
+*.p12

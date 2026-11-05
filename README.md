@@ -1,4 +1,4 @@
-# BillReady · Clearwave AV
+# BillReady · Box MCP demo
 
 **A custom Box workspace built by Clearwave AV engineering for its operations team.** BillReady turns the project documents employees already keep in Box into a visual billing workflow: see completed work, resolve missing acceptance, and prepare an evidence-backed billing package for review.
 
@@ -6,7 +6,9 @@ This repository illustrates how a company can customize its Box experience using
 
 The application prepares drafts. Approval saves documents to Box; employees finalize invoices in their accounting system and send emails themselves.
 
-[Setup](demo-kit/SETUP.md) · [Walkthrough](demo-kit/DEMO_SCRIPT.md) · [Reset options](demo-kit/RESET.md) · [MCP code walkthrough](docs/BOX_MCP_WALKTHROUGH.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Verification](docs/verification.md)
+[Setup](demo-kit/SETUP.md) · [Walkthrough](demo-kit/DEMO_SCRIPT.md) · [Reset options](demo-kit/RESET.md) · [MCP code walkthrough](docs/BOX_MCP_WALKTHROUGH.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Verification](docs/verification.md) · [Public-release review](docs/PUBLIC_RELEASE_REVIEW.md)
+
+Clearwave AV, the customer companies, people and supplied billing documents are fictional demo data. This is a developer sample for a loopback-hosted application, not a production billing service. See [security guidance](SECURITY.md) before using real content.
 
 ## What employees can do
 
@@ -49,6 +51,13 @@ flowchart TB
 Clearwave’s engineer owns the interface, supported project format, financial calculations, validation, review process, and session storage. Box supplies content access and intelligence through remote MCP. BillReady is a custom application connected to Box; it does not modify the Box web application or host a replacement MCP server. The MCP SDK is a client dependency. Binary bytes travel through temporary URLs issued by MCP.
 
 ## Start locally
+
+Clone [box-community/billready-box-mcp-demo](https://github.com/box-community/billready-box-mcp-demo), then open its directory:
+
+```sh
+git clone https://github.com/box-community/billready-box-mcp-demo.git
+cd billready-box-mcp-demo
+```
 
 Requirements: Node.js 26.x (the tested version) and npm. The app uses Node’s built-in SQLite module. Regenerating the upload kit also requires the system `zip` command. Access to this private repository is required to clone it.
 
@@ -224,3 +233,7 @@ First-time discovery can take longer because it lists project folders, reads rec
 The older `test:e2e`, `test:live-view` and `box:inspect` scripts are retained for maintenance. The browser harnesses still contain pre-refactor selectors, and CLI inspection does not inherit employee browser sessions. They are not part of the current verified setup path; use the in-app tool details and the checks above.
 
 Useful entry points: [`auth.ts`](server/auth.ts), [`context.ts`](server/context.ts), [`box-mcp.ts`](server/box-mcp.ts), [`box-content.ts`](server/box-content.ts), [`workflow.ts`](server/workflow.ts), and [`store.ts`](server/store.ts).
+
+## Contributing and license
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development checks and contribution guidance. Licensed under [MIT](LICENSE); third-party dependencies retain their licenses. Box trademarks belong to their respective owners; this sample does not imply endorsement or a support commitment.

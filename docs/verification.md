@@ -4,7 +4,7 @@ This record distinguishes automated fixtures, rendered UI checks and real Box op
 
 ## Current automated baseline
 
-The latest application verification passed **43 tests** with `npm test` and passed the TypeScript/Vite production build with `npm run build` on Node.js 26. These checks were run during the employee-workspace, reset and preview changes. Documentation-only checks are reported separately below.
+The latest application verification passed **44 tests** with `npm test` and passed the TypeScript/Vite production build with `npm run build` on Node.js 26. These checks were run during the employee-workspace, reset and preview changes. Documentation-only checks are reported separately below.
 
 | Area                   | Verified with fixtures or local checks                                                                                                            |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -50,3 +50,7 @@ Earlier revisions also exercised live uploads, output saves and archive restorat
 The November 4 documentation review checked **17 Markdown files and 60 local links/anchors**, with no missing targets. Mermaid CLI 11.17.1 reproduced the old reserved `Box` participant error and successfully rendered both replacement README diagrams. The published project JSON Schema matches the runtime validator, all five sample records validate, and all 35 upload ZIP files match their canonical sources. The generator now emits real Markdown line breaks.
 
 The renderer was installed only in a temporary validation directory; it is not an application dependency. The application’s 43 tests and production build also passed during this review. Official Box setup/tool references were checked against the current vendor documentation and are linked from the README. See the [developer walkthrough](BOX_MCP_WALKTHROUGH.md) and [troubleshooting guide](TROUBLESHOOTING.md).
+
+## Public-release preparation
+
+The [public-release review](PUBLIC_RELEASE_REVIEW.md) records the history/asset scans, privacy decision, development-file-serving fix and its new regression test. The current local suite has 44 passing tests; the older dated counts above describe earlier verification runs.

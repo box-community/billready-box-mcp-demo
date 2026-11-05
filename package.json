@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "start": "NODE_ENV=production tsx server/index.ts",
     "kit": "tsx scripts/generate-kit.ts",
-    "test": "tsx --test tests/domain.test.ts tests/adapter.test.ts tests/tracing.test.ts tests/live-boundaries.test.ts tests/ui-contracts.test.ts tests/employee.test.ts",
+    "test": "tsx --test tests/domain.test.ts tests/adapter.test.ts tests/tracing.test.ts tests/live-boundaries.test.ts tests/ui-contracts.test.ts tests/employee.test.ts tests/dev-files.test.ts",
     "test:e2e": "playwright test",
     "reset": "tsx scripts/reset.ts",
     "box:inspect": "tsx scripts/inspect-box.ts",
