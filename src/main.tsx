@@ -487,6 +487,10 @@ function App({
         )}
       </div>
     );
+  const workspaceUnavailable = state.discovery?.status === "inaccessible";
+  const boxStatus = workspaceUnavailable
+    ? "Box signed in · workspace unavailable"
+    : "Connected to Box";
   const t = project?.billing || state.totals;
   const savedBilling = state.proposals.find(
     (p) =>
@@ -494,26 +498,28 @@ function App({
       p.type === "billing" &&
       p.status === "prepared",
   );
-  const prompts = project
-    ? project.billing.blocked
-      ? [
-          "What is preventing us from billing?",
-          "Find the missing acceptance document.",
-          "Draft a customer follow-up.",
-          "Show the evidence for this milestone.",
-        ]
+  const prompts = workspaceUnavailable
+    ? []
+    : project
+      ? project.billing.blocked
+        ? [
+            "What is preventing us from billing?",
+            "Find the missing acceptance document.",
+            "Draft a customer follow-up.",
+            "Show the evidence for this milestone.",
+          ]
+        : [
+            "Prepare the draft invoice.",
+            "Assemble the billing packet.",
+            "Draft the billing email with attachments.",
+            "What still needs my review?",
+          ]
       : [
-          "Prepare the draft invoice.",
-          "Assemble the billing packet.",
-          "Draft the billing email with attachments.",
-          "What still needs my review?",
-        ]
-    : [
-        "What should I focus on today?",
-        "Which completed work has not been invoiced?",
-        "What could unblock the most billing?",
-        "Show projects needing follow-up.",
-      ];
+          "What should I focus on today?",
+          "Which completed work has not been invoiced?",
+          "What could unblock the most billing?",
+          "Show projects needing follow-up.",
+        ];
   const attentionReady = state.projects.filter(
     (p) =>
       p.billing.ready > 0 &&
@@ -582,7 +588,7 @@ function App({
         <div className="sidebar-bottom">
           <div className="quiet-card">
             <ShieldCheck size={20} />
-            <b>{employee ? "Connected to Box" : "Local development"}</b>
+            <b>{employee ? boxStatus : "Local development"}</b>
             <span>{workspace?.name || "Sample project workspace"}</span>
             {employee && (
               <button onClick={changeWorkspace}>Change workspace folder</button>
@@ -650,7 +656,7 @@ function App({
               className={"mode-pill " + (state.mode === "live" ? "live" : "")}
             >
               <i />
-              {state.mode === "live" ? "Connected to Box" : "Local development"}
+              {state.mode === "live" ? boxStatus : "Local development"}
             </span>
             <span className="date-label">
               {new Date(state.demoDate + "T12:00:00").toLocaleDateString(
@@ -682,7 +688,12 @@ function App({
             </button>
           </div>
         </header>
-        <div className="main-content">
+        <div
+          className={
+            "main-content" +
+            (workspaceUnavailable ? " workspace-unavailable" : "")
+          }
+        >
           <div className="page-heading">
             <div>
               <div className="eyebrow">
@@ -727,11 +738,21 @@ function App({
           {!state.projects.length && (
             <section className="empty-workspace">
               <FolderKanban size={28} />
-              <h2>No supported projects in this folder</h2>
+              <h2>
+                {workspaceUnavailable
+                  ? "Workspace access needs attention"
+                  : "No supported projects in this folder"}
+              </h2>
               <p>
-                Choose a folder containing project.json records and the standard
-                project subfolders.
+                {workspaceUnavailable
+                  ? "Your Box account is signed in, but the selected workspace could not be accessed. Retry to reload its projects, or choose another folder."
+                  : "Choose a folder containing project.json records and the standard project subfolders."}
               </p>
+              {workspaceUnavailable && (
+                <button className="button secondary" onClick={load}>
+                  Retry workspace
+                </button>
+              )}
               {employee && (
                 <button className="button primary" onClick={changeWorkspace}>
                   Choose another folder
@@ -1733,7 +1754,9 @@ function App({
                     QUICK INSIGHT
                   </div>
                   <p>
-                    {project ? (
+                    {workspaceUnavailable ? (
+                      "Retry workspace access before asking about billing amounts."
+                    ) : project ? (
                       project.billing.blocked ? (
                         <>
                           The work is done.{" "}
@@ -1852,6 +1875,7 @@ function App({
               <textarea
                 rows={2}
                 aria-label="Ask the billing assistant"
+                disabled={workspaceUnavailable}
                 placeholder={
                   project
                     ? "Ask about this project…"
@@ -1873,7 +1897,7 @@ function App({
                 </span>
                 <button
                   aria-label="Send message"
-                  disabled={busy || !question.trim()}
+                  disabled={workspaceUnavailable || busy || !question.trim()}
                 >
                   {busy ? (
                     <LoaderCircle size={14} className="spin" />
@@ -1994,7 +2018,7 @@ function App({
                 <b>
                   {state.mode === "development"
                     ? "Development adapter · simulated integration"
-                    : "Connected to Box"}
+                    : boxStatus}
                 </b>
                 <p>
                   {state.mode === "development"

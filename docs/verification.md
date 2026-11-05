@@ -4,7 +4,7 @@ This record distinguishes automated fixtures, rendered UI checks and real Box op
 
 ## Current automated baseline
 
-The latest application verification passed **45 tests** with `npm test` and passed the TypeScript/Vite production build with `npm run build` on Node.js 26. These checks were run during the employee-workspace, reset and preview changes. Documentation-only checks are reported separately below.
+The latest application verification passed **48 tests** with `npm test` and passed the TypeScript/Vite production build with `npm run build` on Node.js 26. These checks include employee workspaces, reset, previews, project scoping and access recovery. Documentation-only checks are reported separately below.
 
 | Area                   | Verified with fixtures or local checks                                                                                                            |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -53,8 +53,14 @@ The renderer was installed only in a temporary validation directory; it is not a
 
 ## Public-release preparation
 
-The [public-release review](PUBLIC_RELEASE_REVIEW.md) records the history/asset scans, privacy decision, development-file-serving fix and its new regression test. The current local suite has 44 passing tests; the older dated counts above describe earlier verification runs.
+The [public-release review](PUBLIC_RELEASE_REVIEW.md) records the history/asset scans, privacy decision, development-file-serving fix and its new regression test. The suite had 44 passing tests at public release; the latest baseline above includes subsequent regression tests.
 
 ## Project-scoped MCP operations
 
 A two-project fixture verifies that project chat discovery, project refresh, and project-page state reads stay inside the selected Box subtree. A matching-looking acceptance in a sibling folder is not inspected. Missing, changed, or failed project inventory does not trigger workspace fallback; sibling projects and documents remain intact. Upload, invoice preview and approval also assert project-only folder calls. These are fixture checks; no live Box files were changed for this regression.
+
+## Workspace access recovery
+
+Fixtures cover transient timeouts, 429/503 responses, expired authentication, lost MCP sessions, missing folder-ancestry metadata, explicit access denial and recovery. Stale MCP transport sessions are discarded for the next explicit retry, without automatically replaying a tool call. Temporary check failures block the request without discarding cached projects or mappings. Confirmed permission loss invalidates the mapping; restored access triggers discovery. Persisted inaccessible state from older versions also triggers recovery even when its old mapping flag remains set.
+
+The inaccessible screen and retry-to-projects transition were inspected in a browser using synthetic fixtures. A read-only live recovery also discovered all five sample projects and verified existing evidence, with no Box file writes, moves, deletions or sharing changes.

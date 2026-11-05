@@ -66,6 +66,8 @@ const archiveFolders = new Map<
   { id: string; name: string; parent: string }
 >();
 let failMoveAfter = -1;
+let folderFailure: { id: string; message: string } | undefined;
+let omitFolderAncestry = false;
 let failListing = false,
   aiCalls = 0;
 const transcript: { user: string; tool: string; args: any }[] = [];
@@ -144,13 +146,17 @@ BoxMcpClient.prototype.callBoxTool = async function (tool, args) {
       args.folder_id || args.parent_folder_id || args.file_id || "",
     );
     if (id) authorized(user, id);
+    if (tool === "get_folder_details" && folderFailure?.id === id)
+      throw Error(folderFailure.message);
     if (tool === "get_folder_details")
       return {
         id,
         name: names[id] || "Project folder",
         shared_link: null,
         has_collaborations: true,
-        path_collection: { entries: [{ id: rootOf(id) || id }] },
+        ...(omitFolderAncestry
+          ? {}
+          : { path_collection: { entries: [{ id: rootOf(id) || id }] } }),
       };
     if (tool === "list_folder_content_by_folder_id") {
       if (failListing) throw Error("503 temporary listing failure");
@@ -417,6 +423,70 @@ test("employee OAuth and workspace workflow isolates accounts and enforces curre
         assert.equal(refreshes["101"], 1);
         assert.equal(refreshes["102"], 1);
         assert.equal(fs.existsSync(process.env.DATA_DIR!), false);
+      },
+    );
+    await t.test(
+      "temporary access checks retain state and legacy inaccessible state recovers",
+      async () => {
+        const before = await a.state();
+        try {
+          for (const message of [
+            "Request timed out",
+            "429 rate limit",
+            "503 unavailable",
+            "MCP session not found (404)",
+            "401 token expired",
+          ]) {
+            folderFailure = { id: "200", message };
+            const failed = await a.request("/api/state");
+            assert.equal(failed.status, 503);
+            assert.match(
+              (await failed.json()).error,
+              /Could not verify workspace access/,
+            );
+            folderFailure = undefined;
+            const restored = await a.state();
+            assert.deepEqual(restored.projects, before.projects);
+            assert.deepEqual(restored.documents, before.documents);
+            assert.equal(restored.discovery.status, "ready");
+            assert.ok(
+              restored.trace.some((call: any) => call.status === "failed"),
+            );
+          }
+          omitFolderAncestry = true;
+          assert.equal((await a.request("/api/state")).status, 503);
+          omitFolderAncestry = false;
+          assert.deepEqual((await a.state()).projects, before.projects);
+          // Reproduce the old persisted state: cleared content but mappedRoot still set.
+          employeeContext.run(
+            {
+              employee: {
+                id: "101",
+                name: "Employee Alpha",
+                email: "101@clearwave.example",
+              },
+              workspace: { id: "200", name: "Operations A" },
+              mcp: {} as any,
+              traces: [],
+              assertActive: () => {},
+            },
+            () => {
+              store.put("projects", []);
+              store.put("documents", []);
+              store.put("discovery", {
+                status: "inaccessible",
+                warnings: ["Workspace access is unavailable."],
+              });
+              assert.equal(store.get("mappedRoot", ""), "200");
+            },
+          );
+          const recovered = await a.state();
+          assert.equal(recovered.projects.length, 1);
+          assert.equal(recovered.discovery.status, "ready");
+        } finally {
+          folderFailure = undefined;
+          omitFolderAncestry = false;
+        }
       },
     );
     await t.test(
@@ -935,6 +1005,11 @@ test("employee OAuth and workspace workflow isolates accounts and enforces curre
         revoked.add("900");
         assert.equal((await b.request("/api/state")).status, 403);
         revoked.delete("900");
+        assert.equal(
+          (await b.state()).projects.length,
+          1,
+          "restored permission triggers rediscovery without reselecting the folder",
+        );
       },
     );
     await t.test(

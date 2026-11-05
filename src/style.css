@@ -3596,3 +3596,10 @@ td:first-child {
   margin-left: 14px;
   color: #0061d5;
 }
+
+/* An inaccessible workspace has no verified totals to display. Keep recovery
+   controls visible without presenting an access failure as a zero-dollar portfolio. */
+.main-content.workspace-unavailable
+  > :not(.page-heading, .workspace-warning, .empty-workspace, .page-footer) {
+  display: none;
+}

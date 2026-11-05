@@ -4,7 +4,8 @@ import type { Project } from "./domain.ts";
 import { projectRecord } from "./project-record.ts";
 import { boxMcp } from "./box-mcp.ts";
 import { get, put, type Doc } from "./store.ts";
-import { traceCall } from "./tracing.ts";
+import { traceCall, sanitizeTrace } from "./tracing.ts";
+import { isBoxAccessDenied } from "./box-access.ts";
 export const ARCHIVE_NAME = "BillReady Rehearsal Archive";
 
 /**
@@ -198,10 +199,7 @@ export class RemoteBox {
       try {
         entries = await inventoryList(id);
       } catch (e) {
-        if (
-          id !== root &&
-          /403|404|forbidden|not.found|access.denied/i.test(String(e))
-        ) {
+        if (id !== root && isBoxAccessDenied(e)) {
           warnings.push("A folder is no longer accessible and was skipped.");
           return;
         }
@@ -391,17 +389,29 @@ export class RemoteBox {
           folder_id: scope.workspace.id,
         });
     } catch (e) {
+      if (!isBoxAccessDenied(e))
+        throw Object.assign(
+          Error(
+            "Could not verify workspace access. Retry the connection check. " +
+              String(sanitizeTrace((e as Error).message)),
+          ),
+          { status: (e as any)?.status === 401 ? 401 : 503 },
+        );
       for (const p of projects()) put("chat:" + p.id, []);
       put("projects", []);
       put("documents", []);
       put("proposals", []);
       put("boxFolders", {});
+      put("mappedRoot", "");
       put("allowedFiles", []);
       put("allowedFolders", []);
       put("activity", []);
       put("chat:overview", []);
-      for (const p of projects()) put("chat:" + p.id, []);
-      scope.traces.length = 0;
+      // Retain the failed check, not previous content from the revoked workspace.
+      const failed = scope.traces
+        .filter((entry) => entry.status === "failed")
+        .at(-1);
+      scope.traces.splice(0, scope.traces.length, ...(failed ? [failed] : []));
       put("discovery", {
         status: "inaccessible",
         warnings: [
@@ -424,16 +434,22 @@ export class RemoteBox {
               folder_id: p.folderId!,
               fields: ["id", "name", "path_collection"],
             });
+            const ancestors =
+              details?.path_collection?.entries ||
+              details?.pathCollection?.entries;
+            if (!Array.isArray(ancestors))
+              throw Object.assign(
+                Error(
+                  "Box folder ancestry is unavailable. Retry before using this project.",
+                ),
+                { status: 503 },
+              );
             if (
-              !(
-                details?.path_collection?.entries ||
-                details?.pathCollection?.entries
-              )?.some((e: any) => String(e.id) === scope.workspace!.id)
+              !ancestors.some((e: any) => String(e.id) === scope.workspace!.id)
             )
               throw Error("403 project moved outside the selected workspace");
           } catch (e) {
-            if (!/403|404|forbidden|not.found|access.denied/i.test(String(e)))
-              throw e;
+            if (!isBoxAccessDenied(e)) throw e;
             put(
               "projects",
               projects().filter((x) => x.id !== p.id),
